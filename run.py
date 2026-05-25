@@ -23,20 +23,20 @@ def cleanup_downloads():
         print("ℹ️ No pdf folder found")
 
 
-async def run_jobs(jobs, test_limit=None):
+async def run_jobs(jobs, limit=None):
 
     for job in jobs:
 
         print(
             f"🚀 Running {job['event']} | {job['start_date']} → {job['end_date']} | year={job['comp_year']}"
-            + (" | 🧪 TEST MODE (4 records)" if test_limit else "")
+            + (f" | 🧪 LIMIT: {limit} records" if limit else "")
         )
 
         await scrape(
             job["start_date"],
             job["end_date"],
             job["comp_year"],
-            test_limit=test_limit,
+            test_limit=limit,
         )
 
         print("✅ Finished\n")
@@ -65,9 +65,11 @@ def main():
         help="Send a test failure + summary email to verify credentials",
     )
     parser.add_argument(
-        "--test",
-        action="store_true",
-        help="Scrape only 4 records per section (for testing)",
+        "--n",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Scrape only N records in total across all sections (e.g. --n 10)",
     )
 
     args = parser.parse_args()
@@ -90,22 +92,18 @@ def main():
         cleanup_downloads()
         return
 
-    test_limit = 4 if args.test else None
-
     # manual run
     if args.start_date and args.end_date:
-
         jobs = [{
             "event": "manual",
             "start_date": args.start_date,
             "end_date": args.end_date,
             "comp_year": args.comp_year
         }]
-
     else:
         jobs = filter_jobs(args.event)
 
-    asyncio.run(run_jobs(jobs, test_limit=test_limit))
+    asyncio.run(run_jobs(jobs, limit=args.n))
 
     if args.cleanup:
         cleanup_downloads()

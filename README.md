@@ -1,6 +1,6 @@
 # USEF Horse Rankings Scraper
 
-Automated scraper for USEF National Points standings. Logs into usef.org, collects horse rankings by section, downloads and parses PDF reports, and upserts the results directly into a Supabase database.
+Automated scraper for USEF National Points standings. Logs into usef.org, collects horse rankings by section, downloads and parses PDF reports, saves a JSONL backup, and upserts the results directly into a Supabase database.
 
 ---
 
@@ -11,11 +11,15 @@ usef-horse-rankings/
 ├── run.py                  # CLI entry point
 ├── requirements.txt
 ├── .env                    # credentials (not committed)
+├── output/                 # JSONL backups (auto-created)
+│   ├── 2026-05-25.jsonl
+│   └── 2026-05-26.jsonl
 └── core/
     ├── config.py           # USEF credentials, section list, browser settings
-    ├── scraper.py          # main scrape loop + Supabase upload
+    ├── scraper.py          # main scrape loop, JSONL backup + Supabase upload
     ├── downloader.py       # async PDF downloader with retries
     ├── pdf_utils.py        # PDF text extraction (pdfplumber)
+    ├── notifier.py         # Gmail email notifications
     ├── logger.py           # coloured console logger
     └── __init__.py
 ```
@@ -92,6 +96,29 @@ The scraper sends email alerts automatically via Gmail SMTP — no extra librari
 
 If email credentials are missing from `.env`, notifications are silently skipped and the scraper runs normally.
 
+**Test your email setup:**
+```bash
+python run.py --test-email
+```
+
+---
+
+## JSONL Backup
+
+Every run automatically saves a local backup to `output/YYYY-MM-DD.jsonl` before uploading to Supabase. Each line is a single JSON record.
+
+```
+output/
+├── 2026-05-25.jsonl
+├── 2026-05-26.jsonl
+└── 2026-05-27.jsonl
+```
+
+- Backup is written **before** the Supabase upload — data is safe even if the upload fails
+- Appends to today's file on re-runs — existing records are never overwritten
+- Deduplicates on the same conflict key as Supabase to avoid duplicate lines
+- Use these files to re-upload to Supabase or audit historical data at any time
+
 ---
 
 ## Usage
@@ -111,10 +138,15 @@ python run.py --event new_event
 python run.py --start-date 3/31/2026 --end-date 3/30/2027 --comp-year 2026
 ```
 
-**Test mode — scrape only 4 records per section**
+**Test mode — scrape only 4 records total (for testing)**
 ```bash
 python run.py --test
 python run.py --test --start-date 3/31/2026 --end-date 3/30/2027
+```
+
+**Test email notifications**
+```bash
+python run.py --test-email
 ```
 
 **Clean up downloaded PDFs**
@@ -131,8 +163,10 @@ python run.py --cleanup
 3. Paginates through all horses and collects horse IDs and links
 4. Downloads each horse's PDF report concurrently (5 workers, 3 retries each)
 5. Parses the PDF with `pdfplumber` to extract `Channel 1 Report Totals` and per-show point values
-6. Upserts all records to Supabase in batches of 500, deduplicating on the conflict key
-7. Deletes each PDF after extraction to save disk space
+6. Saves all records to a JSONL backup file in `output/`
+7. Upserts all records to Supabase in batches of 500, deduplicating on the conflict key
+8. Deletes each PDF after extraction to save disk space
+9. Sends an email summary (or failure alert) on completion
 
 ---
 

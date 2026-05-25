@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from datetime import date, datetime
 from collections import defaultdict
@@ -38,6 +39,8 @@ SECTION_STATS = defaultdict(lambda: {
 
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+JSONL_FILE = OUTPUT_DIR / f"{date.today().strftime('%Y-%m-%d')}.jsonl"
 
 
 # ===============================================
@@ -123,6 +126,54 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
             logger.info(f"PDF deleted: {file_path}")
     except Exception as e:
         logger.warning(f"Failed to delete PDF: {e}")
+
+
+# ===============================================
+# SAVE JSONL BACKUP
+# ===============================================
+
+def save_to_jsonl():
+    """Append new records to a JSONL backup file (one JSON object per line).
+    Existing records are never overwritten — safe to run multiple times."""
+
+    if not Extracted_Data:
+        logger.warning("No data to back up")
+        return
+
+    # Load already-saved keys to avoid duplicates
+    duplicate_fields = ["horse_id", "start_date", "end_date", "award_category", "nat_points_good"]
+    seen_keys = set()
+
+    if JSONL_FILE.exists():
+        try:
+            with open(JSONL_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    record = json.loads(line)
+                    key = tuple(str(record.get(field, "")).strip() for field in duplicate_fields)
+                    seen_keys.add(key)
+        except Exception as e:
+            logger.error(f"Failed to read existing JSONL backup → {JSONL_FILE}: {e}")
+
+    added = 0
+    skipped = 0
+
+    try:
+        with open(JSONL_FILE, "a", encoding="utf-8") as f:
+            for record in Extracted_Data:
+                key = tuple(str(record.get(field, "")).strip() for field in duplicate_fields)
+                if key in seen_keys:
+                    skipped += 1
+                    continue
+                seen_keys.add(key)
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                added += 1
+
+        logger.success(f"JSONL backup saved → {JSONL_FILE} | Added: {added} | Skipped: {skipped}")
+    except Exception as e:
+        logger.error(f"Failed to write JSONL backup → {JSONL_FILE}: {e}")
 
 
 # ===============================================
@@ -458,6 +509,7 @@ async def scrape(start_date, end_date, comp_year, test_limit=None):
         notify_failure("scrape() — fatal error", str(e))
 
     finally:
+        save_to_jsonl()
         upload_to_supabase()
         print_section_summary()
         logger.success(f"Total Records Processed: {len(Extracted_Data)}")
