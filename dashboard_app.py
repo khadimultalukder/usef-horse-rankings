@@ -416,6 +416,10 @@ def load_rankings() -> pd.DataFrame:
     for col in ("nat_points_good",):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Backup original nat_points_good from DB before any recalculation
+    if "nat_points_good" in df.columns:
+        df["nat_points_original"] = df["nat_points_good"]
     for col in ("show_count", "competition_year"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
@@ -538,7 +542,7 @@ with st.expander("🔎 Search & Filters", expanded=True):
         top15_enabled = st.toggle(
             "🏅 Top 15 shows",
             value=False,
-            help="For horses with more than 15 shows, recalculates national points using only their top 15 highest-scoring shows. All horses are still shown.",
+            help="OFF: national points = sum of ALL shows. ON: national points = sum of the top 15 highest-scoring shows.",
         )
 
     with r4c2:
@@ -584,18 +588,30 @@ if filter_start_date or filter_end_date:
         mask &= filtered["start_date"].notna() & (filtered["start_date"] <= filter_end_date)
     filtered = filtered[mask]
 
-# Top-15 recalculation — for horses with >15 shows, recalculate nat_points_good
-# using only their top 15 highest-scoring shows. All horses remain in the table.
-if top15_enabled and "shows" in filtered.columns:
-    def _top15_points(row):
+# Recalculate nat_points_good from the shows column every time.
+# Always compute all-shows sum first (used as highlight reference).
+# Toggle OFF → sum all shows | Toggle ON → sort descending, sum top 15 highest values.
+if "shows" in filtered.columns:
+    def _sum_all_shows(row):
         shows = row["shows"]
         if not isinstance(shows, list) or len(shows) == 0:
             return row["nat_points_good"]
-        scores = sorted([s for s in shows if isinstance(s, (int, float))], reverse=True)
-        return round(sum(scores[:15]), 4)
+        scores = [s for s in shows if isinstance(s, (int, float))]
+        return round(sum(scores), 4)
 
     filtered = filtered.copy()
-    filtered["nat_points_good"] = filtered.apply(_top15_points, axis=1)
+    filtered["_nat_all_shows"] = filtered.apply(_sum_all_shows, axis=1)
+
+    if top15_enabled:
+        def _top15_points(row):
+            shows = row["shows"]
+            if not isinstance(shows, list) or len(shows) == 0:
+                return row["nat_points_good"]
+            scores = sorted([s for s in shows if isinstance(s, (int, float))], reverse=True)
+            return round(sum(scores[:15]), 4)
+        filtered["nat_points_good"] = filtered.apply(_top15_points, axis=1)
+    else:
+        filtered["nat_points_good"] = filtered["_nat_all_shows"]
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +664,7 @@ st.divider()
 # ---------------------------------------------------------------------------
 # UI: Results table
 # ---------------------------------------------------------------------------
-_top15_label = " — Nat. points recalculated using top 15 shows" if top15_enabled else ""
+_top15_label = " — Nat. points = top 15 highest shows" if top15_enabled else " — Nat. points = all shows"
 st.subheader(f"Results ({len(filtered):,}){_top15_label}")
 
 preferred_cols = [
@@ -658,6 +674,7 @@ preferred_cols = [
     "section",
     "award_category",
     "nat_points_good",
+    "nat_points_original",
     "show_count",
     "start_date",
     "end_date",
@@ -669,7 +686,11 @@ preferred_cols = [
 display_cols = [c for c in preferred_cols if c in filtered.columns] + \
                [c for c in filtered.columns if c not in preferred_cols]
 
+display_cols = [c for c in display_cols if c != '_nat_all_shows']
 display_df = filtered[display_cols].copy()
+# Keep _nat_all_shows in filtered for highlight comparison
+if '_nat_all_shows' in filtered.columns:
+    display_df['_nat_all_shows'] = filtered['_nat_all_shows']
 
 # Render with link columns when possible
 column_config = {}
@@ -689,9 +710,27 @@ if "nat_points_good" in display_df.columns:
     column_config["nat_points_good"] = st.column_config.NumberColumn(
         "Nat. points", format="%.2f"
     )
+if "nat_points_original" in display_df.columns:
+    column_config["nat_points_original"] = st.column_config.NumberColumn(
+        "Nat. points (DB)", format="%.2f"
+    )
+
+# Highlight nat_points_good cell when toggle is ON and value changed vs DB original
+def _highlight_changed(df):
+    styles = pd.DataFrame("", index=df.index, columns=df.columns)
+    if (
+        top15_enabled
+        and "nat_points_good" in df.columns
+        and "_nat_all_shows" in df.columns
+    ):
+        changed = df["nat_points_good"].round(4) != df["_nat_all_shows"].round(4)
+        styles.loc[changed, "nat_points_good"] = "background-color: rgba(99, 102, 241, 0.25); color: #6366f1; font-weight: 700;"
+    return styles
+
+styled_df = display_df.style.apply(_highlight_changed, axis=None)
 
 event = st.dataframe(
-    display_df,
+    styled_df,
     use_container_width=True,
     hide_index=True,
     column_config=column_config,
@@ -730,6 +769,7 @@ if selected_rows:
             "section": "Section",
             "award_category": "Award category",
             "nat_points_good": "National points",
+            "nat_points_original": "Nat. points (DB original)",
             "show_count": "Show count",
             "shows": "Shows",
             "start_date": "Start date",
@@ -740,7 +780,7 @@ if selected_rows:
         }
         GROUPS = [
             ("🐎 Identity",    ["horse_name", "horse_id", "section", "award_category"]),
-            ("⚡ Performance", ["nat_points_good", "show_count", "shows"]),
+            ("⚡ Performance", ["nat_points_good", "nat_points_original", "show_count", "shows"]),
             ("📅 Period",      ["competition_year", "start_date", "end_date"]),
             ("🔗 Links",       ["horse_link", "pdf_download_link"]),
             ("ℹ️ Meta",        ["scraped_at"]),

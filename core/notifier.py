@@ -48,35 +48,14 @@ def notify_failure(context: str, error: str):
     _send(subject, body)
 
 
-def notify_summary(
-    total_records: int,
-    section_stats: dict,
-    start_date: str,
-    end_date: str,
-    comp_year,
-):
-    """Call this at the end of a scrape run with a full summary."""
-    total_horses  = sum(s["total"]   for s in section_stats.values())
-    total_success = sum(s["success"] for s in section_stats.values())
-    total_failed  = sum(s["failed"]  for s in section_stats.values())
-
-    subject = "✅ USEF Scraper — Run Complete"
-
-    lines = [
-        "USEF Scraper finished successfully.\n",
-        f"Period  : {start_date} → {end_date}",
-        f"Year    : {comp_year}",
-        f"Horses  : {total_horses}",
-        f"Records : {total_records}",
-        f"Success : {total_success}",
-        f"Failed  : {total_failed}",
-    ]
-
-    if total_failed:
-        failed_sections = [s for s, v in section_stats.items() if v["failed"] > 0]
-        lines.append("\nFailed sections:")
-        lines += [f"  - {s}" for s in failed_sections]
-
-    lines.append("\nThis is an automated message from the USEF scraper.")
-
-    _send(subject, "\n".join(lines))
+def notify_summary(inserted: int, comp_year, run_date: str):
+    """Send a single success email with today's export count."""
+    subject = "✅ USEF Scraper — Export Complete"
+    body = (
+        f"USEF Scraper finished successfully.\n\n"
+        f"Date        : {run_date}\n"
+        f"Year        : {comp_year}\n"
+        f"Records exported today : {inserted}\n\n"
+        "This is an automated message from the USEF scraper."
+    )
+    _send(subject, body)

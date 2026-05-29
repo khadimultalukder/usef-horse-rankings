@@ -30,6 +30,7 @@ BATCH_SIZE = 500
 CONFLICT_COLS = "horse_id,section,competition_year,award_category"
 
 Extracted_Data = []
+_notification_sent = False  # ensures only one email per run
 
 SECTION_STATS = defaultdict(lambda: {
     "total": 0,
@@ -216,38 +217,116 @@ def dedupe_on_conflict_key(rows: list) -> list:
     return list(seen.values())
 
 
+def dedupe_on_content(rows: list) -> list:
+    """Remove rows where award_category + nat_points_good + start_date + end_date are identical.
+    Keeps the first occurrence."""
+    seen = set()
+    result = []
+    for row in rows:
+        key = (
+            str(row.get("award_category", "")).strip(),
+            str(row.get("nat_points_good", "")).strip(),
+            str(row.get("start_date", "")).strip(),
+            str(row.get("end_date", "")).strip(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(row)
+    return result
+
+
+def _make_key(row: dict) -> tuple:
+    """Normalize and build a dedup key from a row dict."""
+    return (
+        str(row.get("horse_id", "")).strip(),
+        str(row.get("section", "")).strip(),
+        str(row.get("competition_year", "")).strip(),
+        str(row.get("award_category", "")).strip(),
+    )
+
+
+def fetch_existing_keys(comp_year) -> set:
+    """Fetch all dedup keys already in the DB for this competition year."""
+    existing_keys = set()
+    offset = 0
+    page_size = 1000
+    try:
+        while True:
+            resp = (
+                supabase.table(TABLE_NAME)
+                .select("horse_id, section, competition_year, award_category")
+                .eq("competition_year", comp_year)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            batch = resp.data or []
+            for row in batch:
+                existing_keys.add(_make_key(row))
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        logger.info(f"Fetched {len(existing_keys)} existing keys from DB for year {comp_year}")
+    except Exception as e:
+        logger.warning(f"Could not fetch existing keys: {e}")
+    return existing_keys
+
+
 def upload_to_supabase():
 
     if not Extracted_Data:
         logger.warning("No data to upload")
-        return
+        return 0
 
     rows = [transform_record(r) for r in Extracted_Data]
 
+    # Step 1 — dedupe within this batch by content
+    deduped_content = dedupe_on_content(rows)
+    if len(deduped_content) < len(rows):
+        logger.info(f"Removed {len(rows) - len(deduped_content)} content-duplicate rows")
+    rows = deduped_content
+
+    # Step 2 — dedupe within this batch by conflict key
     deduped = dedupe_on_conflict_key(rows)
     if len(deduped) < len(rows):
-        logger.info(f"Removed {len(rows) - len(deduped)} duplicate-key rows (kept latest)")
+        logger.info(f"Removed {len(rows) - len(deduped)} conflict-key duplicate rows")
     rows = deduped
+
+    # Step 3 — fetch existing DB keys and remove any already-stored records
+    comp_years = list({str(r["competition_year"]) for r in rows})
+    existing_keys = set()
+    for yr in comp_years:
+        existing_keys |= fetch_existing_keys(yr)
+
+    before = len(rows)
+    rows = [r for r in rows if _make_key(r) not in existing_keys]
+    skipped = before - len(rows)
+    if skipped:
+        logger.info(f"Skipped {skipped} rows already in DB")
+
+    if not rows:
+        logger.success("No new records to upload — database is already up to date")
+        return 0
 
     total = len(rows)
     inserted = 0
     failed_batches = []
 
+    # Use insert (not upsert) — duplicates already filtered above
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         try:
-            supabase.table(TABLE_NAME).upsert(
-                batch, on_conflict=CONFLICT_COLS
-            ).execute()
+            supabase.table(TABLE_NAME).insert(batch).execute()
             inserted += len(batch)
-            logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows uploaded")
+            logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows inserted")
         except Exception as e:
             logger.error(f"Batch {i // BATCH_SIZE + 1} failed: {e}")
             failed_batches.append((i, i + BATCH_SIZE))
 
-    logger.success(f"Done. Upserted {inserted}/{total} rows to '{TABLE_NAME}'")
+    logger.success(f"Done. Inserted {inserted}/{total} new rows to '{TABLE_NAME}'")
     if failed_batches:
         logger.warning(f"Failed batch ranges: {failed_batches}")
+    return inserted
 
 
 # ===============================================
@@ -289,74 +368,98 @@ def print_section_summary():
 
 
 # ===============================================
+# BROWSER LOGIN
+# ===============================================
+
+async def create_browser_session():
+    """Launch browser and login once. Returns (playwright, browser, context, page)."""
+    from playwright.async_api import async_playwright as _async_playwright
+    p = await _async_playwright().start()
+
+    try:
+        browser = await p.chromium.launch(
+            headless=Config.HEADLESS,
+            args=["--no-sandbox"]
+        )
+    except Exception as e:
+        logger.error(f"Failed to launch browser: {e}")
+        notify_failure("Browser launch", str(e))
+        await p.stop()
+        return None
+
+    try:
+        context = await browser.new_context(
+            user_agent=Config.USER_AGENT,
+            viewport=Config.VIEWPORT
+        )
+        page = await context.new_page()
+        page.set_default_timeout(Config.TIMEOUT)
+    except Exception as e:
+        logger.error(f"Failed to create browser context/page: {e}")
+        await browser.close()
+        await p.stop()
+        return None
+
+    try:
+        logger.info(f"Opening: {Config.START_URL}")
+        await page.goto(Config.START_URL)
+
+        try:
+            await page.wait_for_selector(
+                "button#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
+                timeout=5000
+            )
+            cookies_button = page.locator(
+                "button#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll"
+            )
+            if await cookies_button.is_visible():
+                await cookies_button.click()
+                await asyncio.sleep(1)
+                logger.info("Cookies accepted")
+        except Exception:
+            pass
+
+        await page.fill("input#Username", Config.USERNAME)
+        await page.fill("input#Password", Config.PASSWORD)
+        await page.click("input[type='submit']")
+        await page.wait_for_selector(
+            "xpath=//h2[contains(.,'My USEF Dashboard')]"
+        )
+        logger.success("Login successful")
+
+    except Exception as e:
+        logger.error(f"Login failed: {e}")
+        notify_failure("USEF Login", str(e))
+        await browser.close()
+        await p.stop()
+        return None
+
+    return p, browser, context, page
+
+
+async def close_browser_session(session):
+    """Close browser and playwright instance."""
+    if not session:
+        return
+    p, browser, context, page = session
+    try:
+        await browser.close()
+        await p.stop()
+        logger.info("Browser closed")
+    except Exception as e:
+        logger.warning(f"Failed to close browser: {e}")
+
+
+# ===============================================
 # MAIN SCRAPER
 # ===============================================
 
-async def scrape(start_date, end_date, comp_year, test_limit=None):
+async def scrape(start_date, end_date, comp_year, context, page, test_limit=None):
 
-    logger.info("Script started")
-    test_remaining = test_limit  # global PDF counter across all sections
+    logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
+    test_remaining = test_limit
 
     try:
-        async with async_playwright() as p:
-
-            try:
-                browser = await p.chromium.launch(
-                    headless=Config.HEADLESS,
-                    args=["--no-sandbox"]
-                )
-            except Exception as e:
-                logger.error(f"Failed to launch browser: {e}")
-                notify_failure("Browser launch", str(e))
-                return
-
-            try:
-                context = await browser.new_context(
-                    user_agent=Config.USER_AGENT,
-                    viewport=Config.VIEWPORT
-                )
-                page = await context.new_page()
-                page.set_default_timeout(Config.TIMEOUT)
-            except Exception as e:
-                logger.error(f"Failed to create browser context/page: {e}")
-                await browser.close()
-                return
-
-            # ── Login ──────────────────────────────────────────
-            try:
-                logger.info(f"Opening: {Config.START_URL}")
-                await page.goto(Config.START_URL)
-
-                # accept cookies
-                try:
-                    await page.wait_for_selector(
-                        "button#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
-                        timeout=5000
-                    )
-                    cookies_button = page.locator(
-                        "button#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll"
-                    )
-                    if await cookies_button.is_visible():
-                        await cookies_button.click()
-                        await asyncio.sleep(1)
-                        logger.info("Cookies accepted")
-                except Exception:
-                    pass  # cookie banner is optional
-
-                await page.fill("input#Username", Config.USERNAME)
-                await page.fill("input#Password", Config.PASSWORD)
-                await page.click("input[type='submit']")
-                await page.wait_for_selector(
-                    "xpath=//h2[contains(.,'My USEF Dashboard')]"
-                )
-                logger.success("Login successful")
-
-            except Exception as e:
-                logger.error(f"Login failed: {e}")
-                notify_failure("USEF Login", str(e))
-                await browser.close()
-                return
-
             # ── Section loop ───────────────────────────────────
             for value in Config.section_values:
 
@@ -502,21 +605,13 @@ async def scrape(start_date, end_date, comp_year, test_limit=None):
                         logger.info("🧪 Test limit reached — stopping early")
                         break
 
-            await browser.close()
-
     except Exception as e:
         logger.error(f"Fatal error in scrape(): {e}")
         notify_failure("scrape() — fatal error", str(e))
 
     finally:
         save_to_jsonl()
-        upload_to_supabase()
+        inserted = upload_to_supabase() or 0
         print_section_summary()
         logger.success(f"Total Records Processed: {len(Extracted_Data)}")
-        notify_summary(
-            total_records=len(Extracted_Data),
-            section_stats=SECTION_STATS,
-            start_date=start_date,
-            end_date=end_date,
-            comp_year=comp_year,
-        )
+        return inserted

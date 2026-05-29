@@ -2,7 +2,7 @@ import asyncio
 import argparse
 import shutil
 from pathlib import Path
-from core.scraper import scrape
+from core.scraper import scrape, create_browser_session, close_browser_session
 from core.notifier import notify_failure, notify_summary
 
 
@@ -25,21 +25,39 @@ def cleanup_downloads():
 
 async def run_jobs(jobs, limit=None):
 
-    for job in jobs:
+    total_inserted = 0
 
-        print(
-            f"🚀 Running {job['event']} | {job['start_date']} → {job['end_date']} | year={job['comp_year']}"
-            + (f" | 🧪 LIMIT: {limit} records" if limit else "")
-        )
+    # Login once — reuse session across all presets
+    session = await create_browser_session()
+    if not session:
+        print("❌ Could not start browser session — aborting")
+        return 0
 
-        await scrape(
-            job["start_date"],
-            job["end_date"],
-            job["comp_year"],
-            test_limit=limit,
-        )
+    _, _, context, page = session
 
-        print("✅ Finished\n")
+    try:
+        for job in jobs:
+            print(
+                f"🚀 Running {job['event']} | {job['start_date']} → {job['end_date']} | year={job['comp_year']}"
+                + (f" | 🧪 LIMIT: {limit} records" if limit else "")
+            )
+
+            inserted = await scrape(
+                job["start_date"],
+                job["end_date"],
+                job["comp_year"],
+                context=context,
+                page=page,
+                test_limit=limit,
+            ) or 0
+
+            total_inserted += inserted
+            print("✅ Finished\n")
+
+    finally:
+        await close_browser_session(session)
+
+    return total_inserted
 
 
 def filter_jobs(event=None):
@@ -78,13 +96,8 @@ def main():
         print("Sending test failure email...")
         notify_failure("Test — manual trigger", "This is a test error message")
         print("Sending test summary email...")
-        notify_summary(
-            total_records=42,
-            section_stats={"2401 Small Junior Hunter": {"total": 20, "success": 18, "failed": 2}},
-            start_date="3/31/2026",
-            end_date="3/30/2027",
-            comp_year=2026,
-        )
+        from datetime import date
+        notify_summary(inserted=42, comp_year=2026, run_date=date.today().isoformat())
         print("Done — check your inbox")
         return
 
@@ -103,7 +116,15 @@ def main():
     else:
         jobs = filter_jobs(args.event)
 
-    asyncio.run(run_jobs(jobs, limit=args.n))
+    from datetime import date
+    total_inserted = asyncio.run(run_jobs(jobs, limit=args.n))
+
+    # Send one summary email after all jobs complete
+    notify_summary(
+        inserted=total_inserted,
+        comp_year=args.comp_year,
+        run_date=date.today().isoformat(),
+    )
 
     if args.cleanup:
         cleanup_downloads()
