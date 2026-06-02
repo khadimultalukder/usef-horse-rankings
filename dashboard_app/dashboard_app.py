@@ -596,14 +596,15 @@ if selected_sections:
 if selected_awards:
     filtered = filtered[filtered["award_category"].isin(selected_awards)]
 
-# Date overlap filter — show records whose competition period overlaps with the selected range.
-# Overlap condition: record.start_date <= filter_end_date AND record.end_date >= filter_start_date
+# Date range filter — filter directly on start_date and end_date.
+# Start Date: show records where start_date >= filter_start_date
+# End Date: show records where end_date <= filter_end_date
 if filter_start_date or filter_end_date:
     mask = pd.Series([True] * len(filtered), index=filtered.index)
-    if filter_start_date and _has_end_date:
-        mask &= filtered["end_date"].notna() & (filtered["end_date"] >= filter_start_date)
-    if filter_end_date and _has_start_date:
-        mask &= filtered["start_date"].notna() & (filtered["start_date"] <= filter_end_date)
+    if filter_start_date and _has_start_date:
+        mask &= filtered["start_date"].notna() & (filtered["start_date"] >= filter_start_date)
+    if filter_end_date and _has_end_date:
+        mask &= filtered["end_date"].notna() & (filtered["end_date"] <= filter_end_date)
     filtered = filtered[mask]
 
 # "Imported Today" card filter
