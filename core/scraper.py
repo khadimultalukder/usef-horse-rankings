@@ -27,7 +27,7 @@ supabase: Client = create_client(
 
 TABLE_NAME = "usef_horse_rankings"
 BATCH_SIZE = 500
-CONFLICT_COLS = "horse_id,section,competition_year,award_category"
+CONFLICT_COLS = "award_category,nat_points_good,start_date,end_date"
 
 Extracted_Data = []
 _notification_sent = False  # ensures only one email per run
@@ -203,16 +203,11 @@ def transform_record(r: dict) -> dict:
 
 
 def dedupe_on_conflict_key(rows: list) -> list:
-    """Keep only the LAST occurrence of each (horse_id, section, year, award_category) tuple.
+    """Keep only the LAST occurrence of each (award_category, nat_points_good, start_date, end_date) tuple.
     Prevents 'ON CONFLICT cannot affect row a second time' errors."""
     seen = {}
     for row in rows:
-        key = (
-            row["horse_id"],
-            row["section"],
-            row["competition_year"],
-            row["award_category"],
-        )
+        key = _make_key(row)
         seen[key] = row
     return list(seen.values())
 
@@ -239,15 +234,15 @@ def dedupe_on_content(rows: list) -> list:
 def _make_key(row: dict) -> tuple:
     """Normalize and build a dedup key from a row dict."""
     return (
-        str(row.get("horse_id", "")).strip(),
-        str(row.get("section", "")).strip(),
-        str(row.get("competition_year", "")).strip(),
         str(row.get("award_category", "")).strip(),
+        str(row.get("nat_points_good", "")).strip(),
+        str(row.get("start_date", "")).strip(),
+        str(row.get("end_date", "")).strip(),
     )
 
 
-def fetch_existing_keys(comp_year) -> set:
-    """Fetch all dedup keys already in the DB for this competition year."""
+def fetch_existing_keys(start_date: str, end_date: str) -> set:
+    """Fetch all dedup keys already in the DB for this date range."""
     existing_keys = set()
     offset = 0
     page_size = 1000
@@ -255,8 +250,9 @@ def fetch_existing_keys(comp_year) -> set:
         while True:
             resp = (
                 supabase.table(TABLE_NAME)
-                .select("horse_id, section, competition_year, award_category")
-                .eq("competition_year", comp_year)
+                .select("award_category, nat_points_good, start_date, end_date")
+                .eq("start_date", start_date)
+                .eq("end_date", end_date)
                 .range(offset, offset + page_size - 1)
                 .execute()
             )
@@ -266,7 +262,7 @@ def fetch_existing_keys(comp_year) -> set:
             if len(batch) < page_size:
                 break
             offset += page_size
-        logger.info(f"Fetched {len(existing_keys)} existing keys from DB for year {comp_year}")
+        logger.info(f"Fetched {len(existing_keys)} existing keys from DB for {start_date} → {end_date}")
     except Exception as e:
         logger.warning(f"Could not fetch existing keys: {e}")
     return existing_keys
@@ -293,10 +289,10 @@ def upload_to_supabase():
     rows = deduped
 
     # Step 3 — fetch existing DB keys and remove any already-stored records
-    comp_years = list({str(r["competition_year"]) for r in rows})
+    date_ranges = list({(str(r["start_date"]), str(r["end_date"])) for r in rows})
     existing_keys = set()
-    for yr in comp_years:
-        existing_keys |= fetch_existing_keys(yr)
+    for sd, ed in date_ranges:
+        existing_keys |= fetch_existing_keys(sd, ed)
 
     before = len(rows)
     rows = [r for r in rows if _make_key(r) not in existing_keys]
@@ -316,7 +312,7 @@ def upload_to_supabase():
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         try:
-            supabase.table(TABLE_NAME).insert(batch).execute()
+            supabase.table(TABLE_NAME).upsert(batch, on_conflict="award_category,nat_points_good,start_date,end_date").execute()
             inserted += len(batch)
             logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows inserted")
         except Exception as e:
