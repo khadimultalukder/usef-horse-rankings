@@ -522,28 +522,32 @@ with st.expander("🔎 Search & Filters", expanded=True):
             help="Leave empty to include all award categories",
         )
 
-    # Row 3: Start Date / End Date single pickers
+    # Row 3: Start Date / End Date dropdowns (only dates that exist in the data)
     st.markdown("**📅 Date Filters**")
     date_col1, date_col2 = st.columns(2)
+
+    start_dates_available = sorted(df["start_date"].dropna().unique().tolist())         if _has_start_date else []
+    end_dates_available = sorted(df["end_date"].dropna().unique().tolist())         if _has_end_date else []
+
     with date_col1:
-        filter_start_date = st.date_input(
+        filter_start_date = st.selectbox(
             "Start Date",
-            value=None,
-            min_value=datetime.date(2000, 1, 1),
-            max_value=datetime.date(2100, 12, 31),
-            format="MM/DD/YYYY",
-            help="Show records whose competition period includes or starts from this date. Leave blank for no filter.",
+            options=start_dates_available,
+            index=None,
+            placeholder="Select or type a start date…",
+            help="Show only records with this exact start date. Leave blank for no filter.",
             key="filter_start_date",
+            format_func=lambda d: d.strftime("%m/%d/%Y"),
         )
     with date_col2:
-        filter_end_date = st.date_input(
+        filter_end_date = st.selectbox(
             "End Date",
-            value=None,
-            min_value=datetime.date(2000, 1, 1),
-            max_value=datetime.date(2100, 12, 31),
-            format="MM/DD/YYYY",
-            help="Show records whose competition period includes or ends by this date. Leave blank for no filter.",
+            options=end_dates_available,
+            index=None,
+            placeholder="Select or type an end date…",
+            help="Show only records with this exact end date. Leave blank for no filter.",
             key="filter_end_date",
+            format_func=lambda d: d.strftime("%m/%d/%Y"),
         )
 
     # Row 4: top-15 toggle + refresh button
@@ -596,15 +600,13 @@ if selected_sections:
 if selected_awards:
     filtered = filtered[filtered["award_category"].isin(selected_awards)]
 
-# Date range filter — filter directly on start_date and end_date.
-# Start Date: show records where start_date >= filter_start_date
-# End Date: show records where end_date <= filter_end_date
+# Date exact match filter — show only records with the exact date entered.
 if filter_start_date or filter_end_date:
     mask = pd.Series([True] * len(filtered), index=filtered.index)
     if filter_start_date and _has_start_date:
-        mask &= filtered["start_date"].notna() & (filtered["start_date"] >= filter_start_date)
+        mask &= filtered["start_date"].notna() & (filtered["start_date"] == filter_start_date)
     if filter_end_date and _has_end_date:
-        mask &= filtered["end_date"].notna() & (filtered["end_date"] <= filter_end_date)
+        mask &= filtered["end_date"].notna() & (filtered["end_date"] == filter_end_date)
     filtered = filtered[mask]
 
 # "Imported Today" card filter
@@ -708,6 +710,10 @@ st.divider()
 # ---------------------------------------------------------------------------
 _top15_label = " — Nat. points = top 15 highest shows" if top15_enabled else " — Nat. points = all shows"
 st.subheader(f"Results ({len(filtered):,}){_top15_label}")
+
+# Sort by show_count descending when Top 15 toggle is ON
+if top15_enabled and "show_count" in filtered.columns:
+    filtered = filtered.sort_values("show_count", ascending=False)
 
 preferred_cols = [
     "competition_year",
