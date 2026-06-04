@@ -439,7 +439,9 @@ async def close_browser_session(session):
         return
     p, browser, context, page = session
     try:
+        await asyncio.sleep(1)  # Allow pending tasks to flush before closing
         await browser.close()
+        await asyncio.sleep(0.5)
         await p.stop()
         logger.info("Browser closed")
     except Exception as e:
@@ -587,7 +589,7 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
         # PHASE 2 — Download PDF + extract for unique horses
         # ══════════════════════════════════════════════
         total = len(unique_horses)
-        semaphore = asyncio.Semaphore(5)
+        semaphore = asyncio.Semaphore(3)
 
         async def worker(horse_info, idx):
             async with semaphore:
