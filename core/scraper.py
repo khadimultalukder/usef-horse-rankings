@@ -439,9 +439,7 @@ async def close_browser_session(session):
         return
     p, browser, context, page = session
     try:
-        await asyncio.sleep(1)  # Allow pending tasks to flush before closing
         await browser.close()
-        await asyncio.sleep(0.5)
         await p.stop()
         logger.info("Browser closed")
     except Exception as e:
@@ -455,168 +453,153 @@ async def close_browser_session(session):
 async def scrape(start_date, end_date, comp_year, context, page, test_limit=None):
 
     logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
+    test_remaining = test_limit
 
     try:
-        # ══════════════════════════════════════════════
-        # PHASE 1 — Collect all horse IDs from all sections
-        # ══════════════════════════════════════════════
-        all_horses_global = []  # all horses across all sections (may have dupes)
-
-        for value in Config.section_values:
-
-            try:
-                await page.goto("https://www.usef.org/compete/rankings-results")
-                logger.info("Navigating to Compete Ranking Results")
-                await page.wait_for_selector(
-                    "xpath=//h2[contains(.,'Rankings & Results')]"
-                )
-            except Exception as e:
-                logger.error(f"Failed to navigate to Rankings & Results for section '{value}': {e}")
-                continue
-
-            try:
-                await page.select_option("select#CompYear", value=str(comp_year))
-                logger.info(f"Competition Year: {comp_year}")
-                await asyncio.sleep(1)
-
-                await page.select_option(
-                    "select#StandingTypeDisplay",
-                    label="National Points"
-                )
-                await asyncio.sleep(1)
-
-                await page.select_option(
-                    "select#Category",
-                    label="Hunter - Channel 1"
-                )
-                await asyncio.sleep(1)
-
-                logger.info(f"SectionUID: {value}")
-
-                option = page.locator(
-                    f"xpath=//select[@id='SectionUID']/option[contains(text(), '{value}')]"
-                )
-                option_value = await option.get_attribute("value")
-                await page.select_option("select#SectionUID", value=option_value)
-
-                selected_value_ele = page.locator(
-                    "xpath=//select[@id='SectionUID']//option[@selected='selected']"
-                )
-                selected_value = await selected_value_ele.inner_text()
-                logger.info(f"Section: {selected_value}")
-
-            except Exception as e:
-                logger.error(f"Failed to configure filters for section '{value}': {e}")
-                continue
-
-            # ── Pagination & horse collection ──────────────
-            section_horses = []
-
-            while True:
+            # ── Section loop ───────────────────────────────────
+            for value in Config.section_values:
 
                 try:
-                    anchors = await page.locator(
-                        "xpath=//div[@class='tbody']//summary[@class='tr']/div[2]/div/a[1]"
-                    ).all()
-                    logger.info(f"{len(anchors)} anchors found on page")
+                    await page.goto("https://www.usef.org/compete/rankings-results")
+                    logger.info("Navigating to Compete Ranking Results")
+                    await page.wait_for_selector(
+                        "xpath=//h2[contains(.,'Rankings & Results')]"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to navigate to Rankings & Results for section '{value}': {e}")
+                    continue
 
-                    for anchor in anchors:
-                        try:
-                            horse_name = await anchor.inner_text()
-                            horse_link = await anchor.get_attribute("href")
+                try:
+                    await page.select_option("select#CompYear", value=str(comp_year))
+                    logger.info(f"Competition Year: {comp_year}")
+                    await asyncio.sleep(1)
 
-                            if not horse_link:
+                    await page.select_option(
+                        "select#StandingTypeDisplay",
+                        label="National Points"
+                    )
+                    await asyncio.sleep(1)
+
+                    await page.select_option(
+                        "select#Category",
+                        label="Hunter - Channel 1"
+                    )
+                    await asyncio.sleep(1)
+
+                    logger.info(f"SectionUID: {value}")
+
+                    option = page.locator(
+                        f"xpath=//select[@id='SectionUID']/option[contains(text(), '{value}')]"
+                    )
+                    option_value = await option.get_attribute("value")
+                    await page.select_option("select#SectionUID", value=option_value)
+
+                    selected_value_ele = page.locator(
+                        "xpath=//select[@id='SectionUID']//option[@selected='selected']"
+                    )
+                    selected_value = await selected_value_ele.inner_text()
+                    logger.info(f"Section: {selected_value}")
+
+                except Exception as e:
+                    logger.error(f"Failed to configure filters for section '{value}': {e}")
+                    continue
+
+                # ── Pagination & horse collection ──────────────
+                all_horses = []
+
+                while True:
+
+                    try:
+                        anchors = await page.locator(
+                            "xpath=//div[@class='tbody']//summary[@class='tr']/div[2]/div/a[1]"
+                        ).all()
+                        logger.info(f"{len(anchors)} anchors found on page")
+
+                        for anchor in anchors:
+                            try:
+                                horse_name = await anchor.inner_text()
+                                horse_link = await anchor.get_attribute("href")
+
+                                if not horse_link:
+                                    continue
+
+                                parsed = urlparse(horse_link)
+                                horse_id = parsed.path.rstrip("/").split("/")[-1]
+
+                                all_horses.append({
+                                    "competition_year": comp_year,
+                                    "horse_name": horse_name,
+                                    "horse_id": horse_id,
+                                    "horse_link": horse_link,
+                                    "section": selected_value
+                                })
+
+                            except Exception as e:
+                                logger.warning(f"Skipping anchor due to error: {e}")
                                 continue
 
-                            parsed = urlparse(horse_link)
-                            horse_id = parsed.path.rstrip("/").split("/")[-1]
-
-                            section_horses.append({
-                                "competition_year": comp_year,
-                                "horse_name": horse_name,
-                                "horse_id": horse_id,
-                                "horse_link": horse_link,
-                                "section": selected_value
-                            })
-
-                        except Exception as e:
-                            logger.warning(f"Skipping anchor due to error: {e}")
-                            continue
-
-                except Exception as e:
-                    logger.error(f"Failed to collect anchors on page: {e}")
-                    break
-
-                try:
-                    next_button = page.locator(
-                        "xpath=//div[@class='btn-group']//a[@class='btn btn-primary']/following-sibling::a[1]"
-                    )
-                    if await next_button.is_visible():
-                        await next_button.click()
-                        await asyncio.sleep(2)
-                        logger.info("Next page clicked")
-                    else:
-                        logger.info("No next page")
+                    except Exception as e:
+                        logger.error(f"Failed to collect anchors on page: {e}")
                         break
 
-                except Exception as e:
-                    logger.warning(f"Pagination error, stopping: {e}")
-                    break
+                    try:
+                        next_button = page.locator(
+                            "xpath=//div[@class='btn-group']//a[@class='btn btn-primary']/following-sibling::a[1]"
+                        )
+                        if await next_button.is_visible():
+                            await next_button.click()
+                            await asyncio.sleep(2)
+                            logger.info("Next page clicked")
+                        else:
+                            logger.info("No next page")
+                            break
 
-            logger.info(f"Section '{selected_value}': {len(section_horses)} horses collected")
-            all_horses_global.extend(section_horses)
+                    except Exception as e:
+                        logger.warning(f"Pagination error, stopping: {e}")
+                        break
 
-        # ── Deduplicate by horse_id across all sections ────
-        seen_ids = set()
-        unique_horses = []
-        for horse in all_horses_global:
-            if horse["horse_id"] not in seen_ids:
-                seen_ids.add(horse["horse_id"])
-                unique_horses.append(horse)
+                total = len(all_horses)
 
-        logger.info(
-            f"Total collected: {len(all_horses_global)} | "
-            f"Duplicates removed: {len(all_horses_global) - len(unique_horses)} | "
-            f"Unique horses to process: {len(unique_horses)}"
-        )
+                if test_remaining is not None:
+                    all_horses = all_horses[:test_remaining]
+                    logger.info(f"🧪 Test mode: {len(all_horses)} records in this section (global cap {test_limit})")
+                logger.info(f"Total anchors collected: {len(all_horses)}")
 
-        # ── Apply test limit ───────────────────────────────
-        if test_limit is not None:
-            unique_horses = unique_horses[:test_limit]
-            logger.info(f"🧪 Test mode: processing {len(unique_horses)} horses")
+                # ── Concurrent PDF processing ──────────────────
+                semaphore = asyncio.Semaphore(5)
 
-        # ══════════════════════════════════════════════
-        # PHASE 2 — Download PDF + extract for unique horses
-        # ══════════════════════════════════════════════
-        total = len(unique_horses)
-        semaphore = asyncio.Semaphore(3)
+                async def worker(horse_info, idx):
+                    async with semaphore:
+                        try:
+                            await process_horse(
+                                context,
+                                horse_info,
+                                start_date,
+                                end_date,
+                                idx,
+                                total
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Unhandled error in worker for horse "
+                                f"'{horse_info.get('horse_id')}': {e}"
+                            )
 
-        async def worker(horse_info, idx):
-            async with semaphore:
+                tasks = [
+                    worker(horse_info, idx)
+                    for idx, horse_info in enumerate(all_horses, start=1)
+                ]
+
                 try:
-                    await process_horse(
-                        context,
-                        horse_info,
-                        start_date,
-                        end_date,
-                        idx,
-                        total
-                    )
+                    await asyncio.gather(*tasks)
                 except Exception as e:
-                    logger.error(
-                        f"Unhandled error in worker for horse "
-                        f"'{horse_info.get('horse_id')}': {e}"
-                    )
+                    logger.error(f"asyncio.gather failed for section '{value}': {e}")
 
-        tasks = [
-            worker(horse_info, idx)
-            for idx, horse_info in enumerate(unique_horses, start=1)
-        ]
-
-        try:
-            await asyncio.gather(*tasks)
-        except Exception as e:
-            logger.error(f"asyncio.gather failed: {e}")
+                if test_remaining is not None:
+                    test_remaining -= len(all_horses)
+                    if test_remaining <= 0:
+                        logger.info("🧪 Test limit reached — stopping early")
+                        break
 
     except Exception as e:
         logger.error(f"Fatal error in scrape(): {e}")
