@@ -11,7 +11,7 @@ async def download_pdf(
     start_date,
     end_date,
     retries=5,
-    base_delay=3
+    base_delay=2
 ):
 
     pdf_url = (
