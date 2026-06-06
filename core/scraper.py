@@ -76,7 +76,8 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
     channel1 = {}
 
     try:
-        section_totals, channel1 = process_pdf(file_path)
+        loop = asyncio.get_event_loop()
+        section_totals, channel1 = await loop.run_in_executor(None, process_pdf, file_path)
     except Exception as e:
         SECTION_STATS[section]["failed"] += 1
         logger.error(f"[{idx}/{total}] PDF extraction exception → {horse_id}: {e}")
@@ -472,19 +473,19 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 try:
                     await page.select_option("select#CompYear", value=str(comp_year))
                     logger.info(f"Competition Year: {comp_year}")
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)
 
                     await page.select_option(
                         "select#StandingTypeDisplay",
                         label="National Points"
                     )
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)
 
                     await page.select_option(
                         "select#Category",
                         label="Hunter - Channel 1"
                     )
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.5)
 
                     logger.info(f"SectionUID: {value}")
 
@@ -548,7 +549,7 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                         )
                         if await next_button.is_visible():
                             await next_button.click()
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
                             logger.info("Next page clicked")
                         else:
                             logger.info("No next page")
@@ -566,7 +567,7 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 logger.info(f"Total anchors collected: {len(all_horses)}")
 
                 # ── Concurrent PDF processing ──────────────────
-                semaphore = asyncio.Semaphore(5)
+                semaphore = asyncio.Semaphore(10)
 
                 async def worker(horse_info, idx):
                     async with semaphore:
@@ -595,6 +596,13 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 except Exception as e:
                     logger.error(f"asyncio.gather failed for section '{value}': {e}")
 
+                # ── Flush to DB after each section, then clear buffer ──
+                logger.info(f"Section '{selected_value}' done — flushing {len(Extracted_Data)} records to DB")
+                save_to_jsonl()
+                upload_to_supabase()
+                Extracted_Data.clear()
+                logger.info("Buffer cleared — moving to next section")
+
                 if test_remaining is not None:
                     test_remaining -= len(all_horses)
                     if test_remaining <= 0:
@@ -606,8 +614,13 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
         notify_failure("scrape() — fatal error", str(e))
 
     finally:
-        save_to_jsonl()
-        inserted = upload_to_supabase() or 0
+        # Safety net: flush anything left if we exited mid-section
+        if Extracted_Data:
+            logger.info(f"Flushing {len(Extracted_Data)} remaining records in finally block")
+            save_to_jsonl()
+            inserted = upload_to_supabase() or 0
+        else:
+            inserted = 0
         print_section_summary()
-        logger.success(f"Total Records Processed: {len(Extracted_Data)}")
+        logger.success("All sections processed and uploaded")
         return inserted
