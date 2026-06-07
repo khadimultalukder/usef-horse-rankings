@@ -25,13 +25,13 @@ def cleanup_downloads():
 
 async def run_jobs(jobs, limit=None):
 
-    total_inserted = 0
+    totals = {"scraped": 0, "duplicates": 0, "inserted": 0}
 
     # Login once — reuse session across all presets
     session = await create_browser_session()
     if not session:
         print("❌ Could not start browser session — aborting")
-        return 0
+        return totals
 
     _, _, context, page = session
 
@@ -42,22 +42,24 @@ async def run_jobs(jobs, limit=None):
                 + (f" | 🧪 LIMIT: {limit} records" if limit else "")
             )
 
-            inserted = await scrape(
+            stats = await scrape(
                 job["start_date"],
                 job["end_date"],
                 job["comp_year"],
                 context=context,
                 page=page,
                 test_limit=limit,
-            ) or 0
+            ) or {}
 
-            total_inserted += inserted
+            totals["scraped"]     += stats.get("scraped", 0)
+            totals["duplicates"]  += stats.get("duplicates", 0)
+            totals["inserted"]    += stats.get("inserted", 0)
             print("✅ Finished\n")
 
     finally:
         await close_browser_session(session)
 
-    return total_inserted
+    return totals
 
 
 def filter_jobs(event=None):
@@ -97,7 +99,7 @@ def main():
         notify_failure("Test — manual trigger", "This is a test error message")
         print("Sending test summary email...")
         from datetime import date
-        notify_summary(inserted=42, comp_year=2026, run_date=date.today().isoformat())
+        notify_summary(scraped=5484, duplicates=312, inserted=4400, comp_year=2026, run_date=date.today().isoformat())
         print("Done — check your inbox")
         return
 
@@ -117,11 +119,13 @@ def main():
         jobs = filter_jobs(args.event)
 
     from datetime import date
-    total_inserted = asyncio.run(run_jobs(jobs, limit=args.n))
+    totals = asyncio.run(run_jobs(jobs, limit=args.n))
 
     # Send one summary email after all jobs complete
     notify_summary(
-        inserted=total_inserted,
+        scraped=totals["scraped"],
+        duplicates=totals["duplicates"],
+        inserted=totals["inserted"],
         comp_year=args.comp_year,
         run_date=date.today().isoformat(),
     )
