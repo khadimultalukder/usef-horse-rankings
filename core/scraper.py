@@ -325,19 +325,32 @@ def upload_to_supabase():
     inserted = 0
     failed_batches = []
 
+    # Get DB count before insert to calculate actual new rows
+    try:
+        before_count = supabase.table(TABLE_NAME).select("*", count="exact").limit(1).execute().count or 0
+    except Exception:
+        before_count = None
+
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         try:
             supabase.table(TABLE_NAME).upsert(batch, on_conflict="award_category,nat_points_good,start_date,end_date").execute()
             inserted += len(batch)
-            logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows inserted")
+            logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows sent")
         except Exception as e:
             logger.error(f"Batch {i // BATCH_SIZE + 1} failed: {e}")
             failed_batches.append((i, i + BATCH_SIZE))
 
-    RUN_STATS["inserted"] += inserted
+    # Calculate actual inserted from DB count difference
+    try:
+        after_count = supabase.table(TABLE_NAME).select("*", count="exact").limit(1).execute().count or 0
+        actual_inserted = after_count - before_count if before_count is not None else inserted
+    except Exception:
+        actual_inserted = inserted
 
-    logger.success(f"Done. Inserted {inserted}/{total} new rows to '{TABLE_NAME}'")
+    RUN_STATS["inserted"] += actual_inserted
+
+    logger.success(f"Done. Inserted {actual_inserted}/{total} new rows to '{TABLE_NAME}'")
     if failed_batches:
         logger.warning(f"Failed batch ranges: {failed_batches}")
     return inserted
