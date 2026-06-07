@@ -48,14 +48,17 @@ def notify_failure(context: str, error: str):
     _send(subject, body)
 
 
-def notify_summary(inserted: int, comp_year, run_date: str):
-    """Send a single success email with today's export count."""
+def notify_summary(scraped: int, duplicates: int, inserted: int, comp_year, run_date: str):
+    """Send a single success email with full run stats."""
     subject = "✅ USEF Scraper — Export Complete"
     body = (
         f"USEF Scraper finished successfully.\n\n"
-        f"Date        : {run_date}\n"
-        f"Year        : {comp_year}\n"
-        f"Records exported today : {inserted}\n\n"
+        f"Date             : {run_date}\n"
+        f"Competition Year : {comp_year}\n\n"
+        f"--- Run Summary ---\n"
+        f"Total Scraped    : {scraped}\n"
+        f"Duplicates       : {duplicates}\n"
+        f"Exported to DB   : {inserted}\n\n"
         "This is an automated message from the USEF scraper."
     )
     _send(subject, body)
