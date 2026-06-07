@@ -38,6 +38,13 @@ SECTION_STATS = defaultdict(lambda: {
     "failed": 0
 })
 
+# Cumulative run stats — accumulated across all sections
+RUN_STATS = {
+    "scraped": 0,       # total records extracted from PDFs
+    "duplicates": 0,    # records skipped as duplicates (in-batch + already in DB)
+    "inserted": 0,      # records actually written to DB
+}
+
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -275,19 +282,26 @@ def upload_to_supabase():
         logger.warning("No data to upload")
         return 0
 
+    scraped_this_batch = len(Extracted_Data)
+    RUN_STATS["scraped"] += scraped_this_batch
+
     rows = [transform_record(r) for r in Extracted_Data]
 
     # Step 1 — dedupe within this batch by content
     deduped_content = dedupe_on_content(rows)
-    if len(deduped_content) < len(rows):
-        logger.info(f"Removed {len(rows) - len(deduped_content)} content-duplicate rows")
+    content_dupes = len(rows) - len(deduped_content)
+    if content_dupes:
+        logger.info(f"Removed {content_dupes} content-duplicate rows")
     rows = deduped_content
 
     # Step 2 — dedupe within this batch by conflict key
     deduped = dedupe_on_conflict_key(rows)
-    if len(deduped) < len(rows):
-        logger.info(f"Removed {len(rows) - len(deduped)} conflict-key duplicate rows")
+    key_dupes = len(rows) - len(deduped)
+    if key_dupes:
+        logger.info(f"Removed {key_dupes} conflict-key duplicate rows")
     rows = deduped
+
+    RUN_STATS["duplicates"] += content_dupes + key_dupes
 
     # Step 3 — fetch existing DB keys and remove any already-stored records
     date_ranges = list({(str(r["start_date"]), str(r["end_date"])) for r in rows})
@@ -297,9 +311,11 @@ def upload_to_supabase():
 
     before = len(rows)
     rows = [r for r in rows if _make_key(r) not in existing_keys]
-    skipped = before - len(rows)
-    if skipped:
-        logger.info(f"Skipped {skipped} rows already in DB")
+    already_in_db = before - len(rows)
+    if already_in_db:
+        logger.info(f"Skipped {already_in_db} rows already in DB")
+
+    RUN_STATS["duplicates"] += already_in_db
 
     if not rows:
         logger.success("No new records to upload — database is already up to date")
@@ -309,7 +325,6 @@ def upload_to_supabase():
     inserted = 0
     failed_batches = []
 
-    # Use insert (not upsert) — duplicates already filtered above
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         try:
@@ -319,6 +334,8 @@ def upload_to_supabase():
         except Exception as e:
             logger.error(f"Batch {i // BATCH_SIZE + 1} failed: {e}")
             failed_batches.append((i, i + BATCH_SIZE))
+
+    RUN_STATS["inserted"] += inserted
 
     logger.success(f"Done. Inserted {inserted}/{total} new rows to '{TABLE_NAME}'")
     if failed_batches:
@@ -618,9 +635,12 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
         if Extracted_Data:
             logger.info(f"Flushing {len(Extracted_Data)} remaining records in finally block")
             save_to_jsonl()
-            inserted = upload_to_supabase() or 0
-        else:
-            inserted = 0
+            upload_to_supabase()
         print_section_summary()
         logger.success("All sections processed and uploaded")
-        return inserted
+        logger.info(
+            f"RUN TOTALS → Scraped: {RUN_STATS['scraped']} | "
+            f"Duplicates: {RUN_STATS['duplicates']} | "
+            f"Inserted: {RUN_STATS['inserted']}"
+        )
+        return RUN_STATS.copy()
