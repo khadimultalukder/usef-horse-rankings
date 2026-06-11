@@ -544,15 +544,17 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 while True:
 
                     try:
-                        anchors = await page.locator(
-                            "xpath=//div[@class='tbody']//summary[@class='tr']/div[2]/div/a[1]"
-                        ).all()
-                        logger.info(f"{len(anchors)} anchors found on page")
+                        # Extract all anchor data in one JS call — avoids per-element timeout
+                        anchor_data = await page.eval_on_selector_all(
+                            "div.tbody summary.tr div:nth-child(2) div a:first-child",
+                            "els => els.map(a => ({ text: a.innerText.trim(), href: a.getAttribute('href') }))"
+                        )
+                        logger.info(f"{len(anchor_data)} anchors found on page")
 
-                        for anchor in anchors:
+                        for item in anchor_data:
                             try:
-                                horse_name = await anchor.inner_text()
-                                horse_link = await anchor.get_attribute("href")
+                                horse_name = item["text"]
+                                horse_link = item["href"]
 
                                 if not horse_link:
                                     continue
