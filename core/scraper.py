@@ -506,19 +506,19 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 try:
                     await page.select_option("select#CompYear", value=str(comp_year))
                     logger.info(f"Competition Year: {comp_year}")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.5)
 
                     await page.select_option(
                         "select#StandingTypeDisplay",
                         label="National Points"
                     )
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.5)
 
                     await page.select_option(
                         "select#Category",
                         label="Hunter - Channel 1"
                     )
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.5)
 
                     logger.info(f"SectionUID: {value}")
 
@@ -600,7 +600,7 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 logger.info(f"Total anchors collected: {len(all_horses)}")
 
                 # ── Concurrent PDF processing ──────────────────
-                semaphore = asyncio.Semaphore(10)
+                semaphore = asyncio.Semaphore(3)
 
                 async def worker(horse_info, idx):
                     async with semaphore:
