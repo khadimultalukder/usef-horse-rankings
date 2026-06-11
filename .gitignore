@@ -9,14 +9,15 @@ __pycache__/
 .venv/
 venv/
 .env.local
-.logs
+logs
 
 # OS / editor
 .DS_Store
 .idea/
 .vscode/
-.log
+
 
 # Local data dumps (optional — comment out if you want them committed)
 *.json
 *.jsonl
+*.log
