@@ -489,6 +489,11 @@ async def close_browser_session(session):
 
 async def scrape(start_date, end_date, comp_year, context, page, test_limit=None):
 
+    # Reset per-job stats so run_jobs accumulates correctly across multiple jobs
+    RUN_STATS["scraped"] = 0
+    RUN_STATS["duplicates"] = 0
+    RUN_STATS["inserted"] = 0
+
     logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
     test_remaining = test_limit
 
