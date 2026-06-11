@@ -241,10 +241,10 @@ def dedupe_on_content(rows: list) -> list:
 
 def _make_key(row: dict) -> tuple:
     """Normalize and build a dedup key from a row dict."""
-    # Normalize nat_points_good: convert float 1234.0 → "1234" so DB and scraped keys match
+    # Normalize nat_points_good via float so DB's 32.00 and scraped 32 both → "32.0"
     pts = row.get("nat_points_good", "")
     try:
-        pts_str = str(int(float(pts))) if pts not in ("", None) else ""
+        pts_str = str(float(pts)) if pts not in ("", None) else ""
     except (ValueError, TypeError):
         pts_str = str(pts).strip()
     return (
