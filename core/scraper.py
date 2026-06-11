@@ -27,7 +27,7 @@ supabase: Client = create_client(
 
 TABLE_NAME = "usef_horse_rankings"
 BATCH_SIZE = 500
-CONFLICT_COLS = "award_category,nat_points_good,start_date,end_date"
+CONFLICT_COLS = "horse_id,award_category,start_date"
 
 Extracted_Data = []
 _notification_sent = False  # ensures only one email per run
@@ -343,7 +343,8 @@ def upload_to_supabase():
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         try:
-            supabase.table(TABLE_NAME).upsert(batch, on_conflict="award_category,nat_points_good,start_date,end_date").execute()
+            supabase.table(TABLE_NAME).upsert(batch,
+                                              on_conflict="horse_id,award_category,start_date").execute()
             inserted += len(batch)
             logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows sent")
         except Exception as e:
