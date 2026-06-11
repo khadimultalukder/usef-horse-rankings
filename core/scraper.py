@@ -211,7 +211,7 @@ def transform_record(r: dict) -> dict:
 
 
 def dedupe_on_conflict_key(rows: list) -> list:
-    """Keep only the LAST occurrence of each (award_category, nat_points_good, start_date, end_date) tuple.
+    """Keep only the LAST occurrence of each (horse_id, award_category, start_date) tuple.
     Prevents 'ON CONFLICT cannot affect row a second time' errors."""
     seen = {}
     for row in rows:
@@ -221,37 +221,25 @@ def dedupe_on_conflict_key(rows: list) -> list:
 
 
 def dedupe_on_content(rows: list) -> list:
-    """Remove rows where award_category + nat_points_good + start_date + end_date are identical.
-    Keeps the first occurrence."""
-    seen = set()
-    result = []
+    """Remove rows where horse_id + award_category + start_date are identical.
+    Keeps the last occurrence so the latest nat_points_good value wins."""
+    seen = {}
     for row in rows:
         key = (
+            str(row.get("horse_id", "")).strip(),
             str(row.get("award_category", "")).strip(),
-            str(row.get("nat_points_good", "")).strip(),
             str(row.get("start_date", "")).strip(),
-            str(row.get("end_date", "")).strip(),
         )
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(row)
-    return result
+        seen[key] = row
+    return list(seen.values())
 
 
 def _make_key(row: dict) -> tuple:
     """Normalize and build a dedup key from a row dict."""
-    # Normalize nat_points_good via float so DB's 32.00 and scraped 32 both → "32.0"
-    pts = row.get("nat_points_good", "")
-    try:
-        pts_str = str(float(pts)) if pts not in ("", None) else ""
-    except (ValueError, TypeError):
-        pts_str = str(pts).strip()
     return (
+        str(row.get("horse_id", "")).strip(),
         str(row.get("award_category", "")).strip(),
-        pts_str,
         str(row.get("start_date", "")).strip(),
-        str(row.get("end_date", "")).strip(),
     )
 
 
@@ -499,12 +487,6 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
     RUN_STATS["inserted"] = 0
 
     logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
-
-    # Delete old data for this date range before inserting fresh records
-    parsed_start = datetime.strptime(start_date, "%m/%d/%Y").date().isoformat()
-    parsed_end = datetime.strptime(end_date, "%m/%d/%Y").date().isoformat()
-    delete_old_data(parsed_start, parsed_end)
-
     test_remaining = test_limit
 
     try:
