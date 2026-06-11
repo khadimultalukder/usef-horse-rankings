@@ -53,6 +53,33 @@ JSONL_FILE = OUTPUT_DIR / f"{date.today().strftime('%Y-%m-%d')}.jsonl"
 
 
 # ===============================================
+# HUMAN BEHAVIOUR HELPERS
+# ===============================================
+
+async def human_delay(min_sec: float = 1.5, max_sec: float = 3.5):
+    """Random delay to mimic human think time."""
+    await asyncio.sleep(random.uniform(min_sec, max_sec))
+
+
+async def human_type(page, selector: str, text: str):
+    """Type text character by character with random speed like a human."""
+    await page.click(selector)
+    await asyncio.sleep(random.uniform(0.3, 0.7))
+    for char in text:
+        await page.type(selector, char)
+        await asyncio.sleep(random.uniform(0.05, 0.18))
+
+
+async def human_scroll(page):
+    """Randomly scroll down and back up to mimic reading the page."""
+    scroll_amount = random.randint(200, 500)
+    await page.evaluate(f"window.scrollBy(0, {scroll_amount})")
+    await asyncio.sleep(random.uniform(0.5, 1.2))
+    await page.evaluate(f"window.scrollBy(0, -{scroll_amount})")
+    await asyncio.sleep(random.uniform(0.3, 0.7))
+
+
+# ===============================================
 # PROCESS HORSE
 # ===============================================
 
@@ -360,6 +387,7 @@ async def create_browser_session():
     try:
         logger.info(f"Opening: {Config.START_URL}")
         await page.goto(Config.START_URL)
+        await human_delay(2.0, 4.0)
 
         try:
             await page.wait_for_selector(
@@ -371,17 +399,21 @@ async def create_browser_session():
             )
             if await cookies_button.is_visible():
                 await cookies_button.click()
-                await asyncio.sleep(1)
+                await human_delay(1.0, 2.0)
                 logger.info("Cookies accepted")
         except Exception:
             pass
 
-        await page.fill("input#Username", Config.USERNAME)
-        await page.fill("input#Password", Config.PASSWORD)
+        # Type credentials like a human
+        await human_type(page, "input#Username", Config.USERNAME)
+        await human_delay(0.5, 1.2)
+        await human_type(page, "input#Password", Config.PASSWORD)
+        await human_delay(0.8, 1.5)
         await page.click("input[type='submit']")
         await page.wait_for_selector(
             "xpath=//h2[contains(.,'My USEF Dashboard')]"
         )
+        await human_delay(1.5, 3.0)
         logger.success("Login successful")
 
     except Exception as e:
@@ -431,6 +463,8 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                     await page.wait_for_selector(
                         "xpath=//h2[contains(.,'Rankings & Results')]"
                     )
+                    await human_delay(2.0, 4.0)
+                    await human_scroll(page)
                 except Exception as e:
                     logger.error(f"Failed to navigate to Rankings & Results for section '{value}': {e}")
                     continue
@@ -438,19 +472,19 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 try:
                     await page.select_option("select#CompYear", value=str(comp_year))
                     logger.info(f"Competition Year: {comp_year}")
-                    await asyncio.sleep(1.5)
+                    await human_delay(1.5, 3.0)
 
                     await page.select_option(
                         "select#StandingTypeDisplay",
                         label="National Points"
                     )
-                    await asyncio.sleep(1.5)
+                    await human_delay(1.5, 3.0)
 
                     await page.select_option(
                         "select#Category",
                         label="Hunter - Channel 1"
                     )
-                    await asyncio.sleep(1.5)
+                    await human_delay(1.5, 3.0)
 
                     logger.info(f"SectionUID: {value}")
 
@@ -459,6 +493,8 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                     )
                     option_value = await option.get_attribute("value")
                     await page.select_option("select#SectionUID", value=option_value)
+                    await human_delay(2.0, 4.0)
+                    await human_scroll(page)
 
                     selected_value_ele = page.locator(
                         "xpath=//select[@id='SectionUID']//option[@selected='selected']"
@@ -515,8 +551,9 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                             "xpath=//div[@class='btn-group']//a[@class='btn btn-primary']/following-sibling::a[1]"
                         )
                         if await next_button.is_visible():
+                            await human_scroll(page)
                             await next_button.click()
-                            await asyncio.sleep(1)
+                            await human_delay(2.0, 4.0)
                             logger.info("Next page clicked")
                         else:
                             logger.info("No next page")
@@ -569,6 +606,7 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 upload_to_supabase()
                 Extracted_Data.clear()
                 logger.info("Buffer cleared — moving to next section")
+                await human_delay(4.0, 8.0)  # longer break between sections
 
                 if test_remaining is not None:
                     test_remaining -= len(all_horses)
