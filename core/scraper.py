@@ -282,6 +282,23 @@ def fetch_existing_keys(start_date: str, end_date: str) -> set:
     return existing_keys
 
 
+def delete_old_data(start_date: str, end_date: str):
+    """Delete all existing DB records for the given date range before re-scraping."""
+    try:
+        resp = (
+            supabase.table(TABLE_NAME)
+            .delete()
+            .eq("start_date", start_date)
+            .eq("end_date", end_date)
+            .execute()
+        )
+        deleted_count = len(resp.data) if resp.data else 0
+        logger.info(f"Deleted {deleted_count} old records from DB for {start_date} → {end_date}")
+    except Exception as e:
+        logger.error(f"Failed to delete old data for {start_date} → {end_date}: {e}")
+        raise
+
+
 def upload_to_supabase():
 
     if not Extracted_Data:
@@ -308,20 +325,6 @@ def upload_to_supabase():
     rows = deduped
 
     RUN_STATS["duplicates"] += content_dupes + key_dupes
-
-    # Step 3 — fetch existing DB keys and remove any already-stored records
-    date_ranges = list({(str(r["start_date"]), str(r["end_date"])) for r in rows})
-    existing_keys = set()
-    for sd, ed in date_ranges:
-        existing_keys |= fetch_existing_keys(sd, ed)
-
-    before = len(rows)
-    rows = [r for r in rows if _make_key(r) not in existing_keys]
-    already_in_db = before - len(rows)
-    if already_in_db:
-        logger.info(f"Skipped {already_in_db} rows already in DB")
-
-    RUN_STATS["duplicates"] += already_in_db
 
     if not rows:
         logger.success("No new records to upload — database is already up to date")
@@ -495,6 +498,12 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
     RUN_STATS["inserted"] = 0
 
     logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
+
+    # Delete old data for this date range before inserting fresh records
+    parsed_start = datetime.strptime(start_date, "%m/%d/%Y").date().isoformat()
+    parsed_end = datetime.strptime(end_date, "%m/%d/%Y").date().isoformat()
+    delete_old_data(parsed_start, parsed_end)
+
     test_remaining = test_limit
 
     try:
