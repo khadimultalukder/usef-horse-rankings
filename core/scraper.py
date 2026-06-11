@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import random
 from datetime import date, datetime
 from collections import defaultdict
 from playwright.async_api import async_playwright
@@ -82,8 +83,11 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
     section_totals = {}
     channel1 = {}
 
+    # Random delay between requests to avoid rate limiting
+    await asyncio.sleep(random.uniform(1.0, 3.0))
+
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         section_totals, channel1 = await loop.run_in_executor(None, process_pdf, file_path)
     except Exception as e:
         SECTION_STATS[section]["failed"] += 1
@@ -142,45 +146,18 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
 # ===============================================
 
 def save_to_jsonl():
-    """Append new records to a JSONL backup file (one JSON object per line).
-    Existing records are never overwritten — safe to run multiple times."""
+    """Append all records to a JSONL backup file (one JSON object per line). No duplicate filtering."""
 
     if not Extracted_Data:
         logger.warning("No data to back up")
         return
 
-    # Load already-saved keys to avoid duplicates
-    duplicate_fields = ["horse_id", "start_date", "end_date", "award_category", "nat_points_good"]
-    seen_keys = set()
-
-    if JSONL_FILE.exists():
-        try:
-            with open(JSONL_FILE, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    record = json.loads(line)
-                    key = tuple(str(record.get(field, "")).strip() for field in duplicate_fields)
-                    seen_keys.add(key)
-        except Exception as e:
-            logger.error(f"Failed to read existing JSONL backup → {JSONL_FILE}: {e}")
-
-    added = 0
-    skipped = 0
-
     try:
         with open(JSONL_FILE, "a", encoding="utf-8") as f:
             for record in Extracted_Data:
-                key = tuple(str(record.get(field, "")).strip() for field in duplicate_fields)
-                if key in seen_keys:
-                    skipped += 1
-                    continue
-                seen_keys.add(key)
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                added += 1
 
-        logger.success(f"JSONL backup saved → {JSONL_FILE} | Added: {added} | Skipped: {skipped}")
+        logger.success(f"JSONL backup saved → {JSONL_FILE} | Added: {len(Extracted_Data)}")
     except Exception as e:
         logger.error(f"Failed to write JSONL backup → {JSONL_FILE}: {e}")
 
@@ -243,50 +220,6 @@ def _make_key(row: dict) -> tuple:
     )
 
 
-def fetch_existing_keys(start_date: str, end_date: str) -> set:
-    """Fetch all dedup keys already in the DB for this date range."""
-    existing_keys = set()
-    offset = 0
-    page_size = 1000
-    try:
-        while True:
-            resp = (
-                supabase.table(TABLE_NAME)
-                .select("award_category, nat_points_good, start_date, end_date")
-                .eq("start_date", start_date)
-                .eq("end_date", end_date)
-                .range(offset, offset + page_size - 1)
-                .execute()
-            )
-            batch = resp.data or []
-            for row in batch:
-                existing_keys.add(_make_key(row))
-            if len(batch) < page_size:
-                break
-            offset += page_size
-        logger.info(f"Fetched {len(existing_keys)} existing keys from DB for {start_date} → {end_date}")
-    except Exception as e:
-        logger.warning(f"Could not fetch existing keys: {e}")
-    return existing_keys
-
-
-def delete_old_data(start_date: str, end_date: str):
-    """Delete all existing DB records for the given date range before re-scraping."""
-    try:
-        resp = (
-            supabase.table(TABLE_NAME)
-            .delete()
-            .eq("start_date", start_date)
-            .eq("end_date", end_date)
-            .execute()
-        )
-        deleted_count = len(resp.data) if resp.data else 0
-        logger.info(f"Deleted {deleted_count} old records from DB for {start_date} → {end_date}")
-    except Exception as e:
-        logger.error(f"Failed to delete old data for {start_date} → {end_date}: {e}")
-        raise
-
-
 def upload_to_supabase():
 
     if not Extracted_Data:
@@ -331,8 +264,7 @@ def upload_to_supabase():
     for i in range(0, total, BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
         try:
-            supabase.table(TABLE_NAME).upsert(batch,
-                                              on_conflict="horse_id,award_category,start_date").execute()
+            supabase.table(TABLE_NAME).upsert(batch, on_conflict=CONFLICT_COLS).execute()
             inserted += len(batch)
             logger.success(f"Batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows sent")
         except Exception as e:
