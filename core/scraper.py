@@ -667,4 +667,5 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
             f"Duplicates: {RUN_STATS['duplicates']} | "
             f"Inserted: {RUN_STATS['inserted']}"
         )
-        return RUN_STATS.copy()
+
+    return RUN_STATS.copy()
