@@ -4,7 +4,6 @@ import os
 import random
 from datetime import date, datetime
 from collections import defaultdict
-from playwright.async_api import async_playwright
 from urllib.parse import urlparse
 from pathlib import Path
 from supabase import create_client, Client
@@ -31,8 +30,6 @@ BATCH_SIZE = 500
 CONFLICT_COLS = "horse_id,award_category,start_date"
 
 Extracted_Data = []
-SCRAPED_HORSE_IDS = set()   # tracks all horse_ids scraped in this run
-_notification_sent = False  # ensures only one email per run
 
 SECTION_STATS = defaultdict(lambda: {
     "total": 0,
@@ -144,7 +141,6 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
                 Extracted_Data.append(record)
 
             SECTION_STATS[section]["success"] += 1
-            SCRAPED_HORSE_IDS.add(horse_id)
 
             logger.info(
                 f"📊 [{idx}/{total}] Processing: "
@@ -462,7 +458,6 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
     RUN_STATS["scraped"] = 0
     RUN_STATS["duplicates"] = 0
     RUN_STATS["inserted"] = 0
-    SCRAPED_HORSE_IDS.clear()
 
     logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
     test_remaining = test_limit
@@ -655,5 +650,14 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
             f"Duplicates: {RUN_STATS['duplicates']} | "
             f"Inserted: {RUN_STATS['inserted']}"
         )
+
+        if run_success:
+            notify_summary(
+                scraped=RUN_STATS["scraped"],
+                duplicates=RUN_STATS["duplicates"],
+                inserted=RUN_STATS["inserted"],
+                comp_year=comp_year,
+                run_date=date.today().strftime("%Y-%m-%d"),
+            )
 
     return RUN_STATS.copy()
