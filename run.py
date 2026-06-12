@@ -25,13 +25,13 @@ def cleanup_downloads():
 
 async def run_jobs(jobs, limit=None):
 
-    totals = {"scraped": 0, "duplicates": 0, "inserted": 0}
+    event_stats = []  # per-event breakdown for summary email
 
     # Login once — reuse session across all presets
     session = await create_browser_session()
     if not session:
         print("❌ Could not start browser session — aborting")
-        return totals
+        return event_stats
 
     _, _, context, page = session
 
@@ -51,15 +51,20 @@ async def run_jobs(jobs, limit=None):
                 test_limit=limit,
             ) or {}
 
-            totals["scraped"]     += stats.get("scraped", 0)
-            totals["duplicates"]  += stats.get("duplicates", 0)
-            totals["inserted"]    += stats.get("inserted", 0)
+            event_stats.append({
+                "comp_year":  stats.get("comp_year",  job["comp_year"]),
+                "start_date": stats.get("start_date", job["start_date"]),
+                "end_date":   stats.get("end_date",   job["end_date"]),
+                "scraped":    stats.get("scraped",    0),
+                "duplicates": stats.get("duplicates", 0),
+                "inserted":   stats.get("inserted",   0),
+            })
             print("✅ Finished\n")
 
     finally:
         await close_browser_session(session)
 
-    return totals
+    return event_stats
 
 
 def filter_jobs(event=None):
@@ -99,7 +104,15 @@ def main():
         notify_failure("Test — manual trigger", "This is a test error message")
         print("Sending test summary email...")
         from datetime import date
-        notify_summary(scraped=5484, duplicates=312, inserted=4400, comp_year=2026, run_date=date.today().isoformat())
+        notify_summary(
+            events=[
+                {"comp_year": 2026, "start_date": "2026-03-31", "end_date": "2027-03-30",
+                 "scraped": 5484, "duplicates": 312, "inserted": 5172},
+                {"comp_year": 2025, "start_date": "2025-09-01", "end_date": "2026-08-31",
+                 "scraped": 3200, "duplicates": 100, "inserted": 3100},
+            ],
+            run_date=date.today().isoformat(),
+        )
         print("Done — check your inbox")
         return
 
@@ -119,14 +132,11 @@ def main():
         jobs = filter_jobs(args.event)
 
     from datetime import date
-    totals = asyncio.run(run_jobs(jobs, limit=args.n))
+    event_stats = asyncio.run(run_jobs(jobs, limit=args.n))
 
-    # Send one summary email after all jobs complete
+    # Send one summary email after all events complete
     notify_summary(
-        scraped=totals["scraped"],
-        duplicates=totals["duplicates"],
-        inserted=totals["inserted"],
-        comp_year=args.comp_year,
+        events=event_stats,
         run_date=date.today().isoformat(),
     )
 
