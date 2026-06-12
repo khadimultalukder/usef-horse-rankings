@@ -109,7 +109,6 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
     channel1 = {}
 
     # Random delay between requests to avoid rate limiting
-    await asyncio.sleep(random.uniform(1.0, 3.0))
 
     try:
         loop = asyncio.get_running_loop()
