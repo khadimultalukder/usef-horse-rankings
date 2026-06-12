@@ -245,14 +245,18 @@ def _make_key(row: dict) -> tuple:
     )
 
 
-def delete_all_for_run():
-    """Delete ALL records from the table.
-    Called only after a fully successful scrape, right before inserting fresh data."""
+def delete_all_for_run(comp_year: int, start_date: str, end_date: str):
+    """Delete records for this specific competition_year + start_date + end_date only.
+    Other events in the DB are not affected."""
     try:
-        supabase.table(TABLE_NAME).delete().neq("id", 0).execute()
-        logger.info(f"Deleted all existing records from '{TABLE_NAME}'")
+        supabase.table(TABLE_NAME).delete()\
+            .eq("competition_year", comp_year)\
+            .eq("start_date", start_date)\
+            .eq("end_date", end_date)\
+            .execute()
+        logger.info(f"Deleted old records for year={comp_year} | {start_date} → {end_date}")
     except Exception as e:
-        logger.error(f"Failed to delete all data: {e}")
+        logger.error(f"Failed to delete old data: {e}")
         raise
 
 
@@ -627,9 +631,12 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
 
     finally:
         if run_success and Extracted_Data:
-            # Step 1 — delete entire table
-            logger.info("Scrape complete — deleting all DB records before inserting fresh data...")
-            delete_all_for_run()
+            parsed_start = datetime.strptime(start_date, "%m/%d/%Y").date().isoformat()
+            parsed_end = datetime.strptime(end_date, "%m/%d/%Y").date().isoformat()
+
+            # Step 1 — delete only this event's old data
+            logger.info("Scrape complete — deleting old records for this event before inserting fresh data...")
+            delete_all_for_run(comp_year, parsed_start, parsed_end)
 
             # Step 2 — insert all new scraped data
             logger.info(f"Inserting {len(Extracted_Data)} fresh records into DB...")
