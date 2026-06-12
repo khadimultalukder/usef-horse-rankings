@@ -13,7 +13,7 @@ from .config import Config
 from .pdf_utils import process_pdf
 from .downloader import download_pdf
 from .logger import Logger
-from .notifier import notify_failure, notify_summary
+from .notifier import notify_failure
 
 
 load_dotenv()
@@ -658,13 +658,10 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
             f"Inserted: {RUN_STATS['inserted']}"
         )
 
-        if run_success:
-            notify_summary(
-                scraped=RUN_STATS["scraped"],
-                duplicates=RUN_STATS["duplicates"],
-                inserted=RUN_STATS["inserted"],
-                comp_year=comp_year,
-                run_date=date.today().strftime("%Y-%m-%d"),
-            )
-
-    return RUN_STATS.copy()
+    # per-event stats returned so run.py can build the combined email
+    return {
+        **RUN_STATS,
+        "comp_year": comp_year,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
