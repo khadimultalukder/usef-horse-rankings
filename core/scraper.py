@@ -31,6 +31,7 @@ BATCH_SIZE = 500
 CONFLICT_COLS = "horse_id,award_category,start_date"
 
 Extracted_Data = []
+SCRAPED_HORSE_IDS = set()   # tracks all horse_ids scraped in this run
 _notification_sent = False  # ensures only one email per run
 
 SECTION_STATS = defaultdict(lambda: {
@@ -143,6 +144,7 @@ async def process_horse(context, horse_info, start_date, end_date, idx, total):
                 Extracted_Data.append(record)
 
             SECTION_STATS[section]["success"] += 1
+            SCRAPED_HORSE_IDS.add(horse_id)
 
             logger.info(
                 f"📊 [{idx}/{total}] Processing: "
@@ -245,6 +247,17 @@ def _make_key(row: dict) -> tuple:
         str(row.get("award_category", "")).strip(),
         str(row.get("start_date", "")).strip(),
     )
+
+
+def delete_all_for_run():
+    """Delete ALL records from the table.
+    Called only after a fully successful scrape, right before inserting fresh data."""
+    try:
+        supabase.table(TABLE_NAME).delete().neq("id", 0).execute()
+        logger.info(f"Deleted all existing records from '{TABLE_NAME}'")
+    except Exception as e:
+        logger.error(f"Failed to delete all data: {e}")
+        raise
 
 
 def upload_to_supabase():
@@ -449,9 +462,11 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
     RUN_STATS["scraped"] = 0
     RUN_STATS["duplicates"] = 0
     RUN_STATS["inserted"] = 0
+    SCRAPED_HORSE_IDS.clear()
 
     logger.info(f"Scraping year={comp_year} | {start_date} → {end_date}")
     test_remaining = test_limit
+    run_success = False
 
     try:
             # ── Section loop ───────────────────────────────────
@@ -600,12 +615,7 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                 except Exception as e:
                     logger.error(f"asyncio.gather failed for section '{value}': {e}")
 
-                # ── Flush to DB after each section, then clear buffer ──
-                logger.info(f"Section '{selected_value}' done — flushing {len(Extracted_Data)} records to DB")
-                save_to_jsonl()
-                upload_to_supabase()
-                Extracted_Data.clear()
-                logger.info("Buffer cleared — moving to next section")
+                logger.info(f"Section '{selected_value}' done — {len(Extracted_Data)} total records collected so far")
                 await human_delay(4.0, 8.0)  # longer break between sections
 
                 if test_remaining is not None:
@@ -614,16 +624,30 @@ async def scrape(start_date, end_date, comp_year, context, page, test_limit=None
                         logger.info("🧪 Test limit reached — stopping early")
                         break
 
+        run_success = True
+
     except Exception as e:
         logger.error(f"Fatal error in scrape(): {e}")
         notify_failure("scrape() — fatal error", str(e))
 
     finally:
-        # Safety net: flush anything left if we exited mid-section
-        if Extracted_Data:
-            logger.info(f"Flushing {len(Extracted_Data)} remaining records in finally block")
-            save_to_jsonl()
+        if run_success and Extracted_Data:
+            # Step 1 — delete entire table
+            logger.info("Scrape complete — deleting all DB records before inserting fresh data...")
+            delete_all_for_run()
+
+            # Step 2 — insert all new scraped data
+            logger.info(f"Inserting {len(Extracted_Data)} fresh records into DB...")
             upload_to_supabase()
+
+            # Step 3 — save JSONL backup
+            save_to_jsonl()
+
+        elif not run_success:
+            logger.warning("Run did not complete — DB not touched. Saving JSONL backup only.")
+            if Extracted_Data:
+                save_to_jsonl()
+
         print_section_summary()
         logger.success("All sections processed and uploaded")
         logger.info(
