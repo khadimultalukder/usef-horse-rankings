@@ -42,13 +42,13 @@ SECTIONS = [
     "2402 Large Junior Hunter 15/Under",
     "2403 Small Junior Hunter 16-17 Years",
     "2404 Large Junior Hunter 16-17 Years",
-    "2421 Small Junior Hunter 3'3\" 15 & Under",
-    "2422 Large Junior Hunter 3'3\" 15 & Under",
-    "2423 Small Junior Hunter 3'3\" 16-17",
-    "2424 Large Junior Hunter 3'3\" 16-17",
-    "2501 Small Pony Hunter",
-    "2502 Medium Pony Hunter",
-    "2503 Large Pony Hunter",
+    # "2421 Small Junior Hunter 3'3\" 15 & Under",
+    # "2422 Large Junior Hunter 3'3\" 15 & Under",
+    # "2423 Small Junior Hunter 3'3\" 16-17",
+    # "2424 Large Junior Hunter 3'3\" 16-17",
+    # "2501 Small Pony Hunter",
+    # "2502 Medium Pony Hunter",
+    # "2503 Large Pony Hunter",
 ]
 
 EVENTS = [
