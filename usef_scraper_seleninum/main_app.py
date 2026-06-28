@@ -529,7 +529,7 @@ def process_horse(driver, url, horse_id, horse_name, dates, main_tab,
                     for _ in range(60):
                         time.sleep(1)
                         after     = set(glob.glob(os.path.join(DOWNLOAD_DIR, "*")))
-                        new_files = [f for f in (after - before) if not f.endswith(".crdownload")]
+                        new_files = [f for f in (after - before) if not f.endswith(".crdownload") and not f.endswith(".tmp")]
                         if new_files:
                             downloaded = new_files[0]
                             break
