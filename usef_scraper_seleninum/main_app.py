@@ -34,8 +34,8 @@ COOKIES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "usef_co
 USEF_HOME    = "https://www.usef.org"           # base domain — cookies set here apply to ALL subdomains
 LOGIN_URL    = "https://members.usef.org/"
 RANKINGS_URL = "https://www.usef.org/compete/rankings-results"
-EMAIL    = "Cplafrance"
-PASSWORD = "Hp6643206"
+EMAIL    = "5778911"
+PASSWORD = "Jal13579**"
 
 SECTIONS = [
     "2401 Small Junior Hunter 15/Under",
