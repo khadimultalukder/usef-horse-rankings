@@ -1,0 +1,23 @@
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env.local
+logs
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+
+# Local data dumps (optional — comment out if you want them committed)
+*.json
+*.jsonl
+*.log
