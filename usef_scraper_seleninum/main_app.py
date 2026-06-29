@@ -1,9 +1,11 @@
 """
 Usage:
-  python main_app.py                        # run all events
-  python main_app.py --event "event_0"      # run specific event
-  python main_app.py --pdf 5                # stop after 5 PDFs, then export
+  python main_app.py                                                              # run all events & sections
+  python main_app.py --event "event_0"                                           # run specific event
+  python main_app.py --pdf 5                                                      # stop after 5 PDFs, then export
   python main_app.py --event "event_0" --pdf 3
+  python main_app.py --section "2421 Small Junior Hunter 3'3\" 15 & Under"               # run one section across all events
+  python main_app.py --section "2401 Small Junior Hunter 15/Under" --event "event_0"  # combine section + event
 """
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -42,13 +44,13 @@ SECTIONS = [
     "2402 Large Junior Hunter 15/Under",
     "2403 Small Junior Hunter 16-17 Years",
     "2404 Large Junior Hunter 16-17 Years",
-    # "2421 Small Junior Hunter 3'3\" 15 & Under",
-    # "2422 Large Junior Hunter 3'3\" 15 & Under",
-    # "2423 Small Junior Hunter 3'3\" 16-17",
-    # "2424 Large Junior Hunter 3'3\" 16-17",
-    # "2501 Small Pony Hunter",
-    # "2502 Medium Pony Hunter",
-    # "2503 Large Pony Hunter",
+    "2421 Small Junior Hunter 3'3\" 15 & Under",
+    "2422 Large Junior Hunter 3'3\" 15 & Under",
+    "2423 Small Junior Hunter 3'3\" 16-17",
+    "2424 Large Junior Hunter 3'3\" 16-17",
+    "2501 Small Pony Hunter",
+    "2502 Medium Pony Hunter",
+    "2503 Large Pony Hunter",
 ]
 
 EVENTS = [
@@ -583,6 +585,12 @@ def main():
         help='Run a specific event by name (e.g. --event "event_0")'
     )
     parser.add_argument(
+        "--section",
+        type=str,
+        default=None,
+        help='Run a specific section (e.g. --section "2401 Small Junior Hunter 15/Under")'
+    )
+    parser.add_argument(
         "--pdf",
         type=int,
         default=None,
@@ -591,6 +599,15 @@ def main():
     args = parser.parse_args()
     pdf_limit = args.pdf
     pdf_count = 0
+
+    sections_to_run = SECTIONS
+    if args.section:
+        sections_to_run = [s for s in SECTIONS if s == args.section]
+        if not sections_to_run:
+            print(f"❌ No section found: '{args.section}'")
+            print(f"   Available sections: {SECTIONS}")
+            return
+        print(f"🎯 Running only section: {args.section}")
 
     events_to_run = EVENTS
     if args.event:
@@ -618,7 +635,7 @@ def main():
         seen       = set()
         seen_rows  = set()
 
-        for section_id in SECTIONS:
+        for section_id in sections_to_run:
             if stop:
                 break
             print(f"\n{'='*60}")
