@@ -4,7 +4,7 @@ Usage:
   python main_app.py --event "event_0"                                           # run specific event
   python main_app.py --pdf 5                                                      # stop after 5 PDFs, then export
   python main_app.py --event "event_0" --pdf 3
-  python main_app.py --section "2421 Small Junior Hunter 3'3\" 15 & Under"               # run one section across all events
+  python main_app.py --section "2503 Large Pony Hunter"               # run one section across all events
   python main_app.py --section "2401 Small Junior Hunter 15/Under" --event "event_0"  # combine section + event
 """
 from selenium import webdriver
@@ -40,17 +40,17 @@ EMAIL    = os.environ["USEF_USERNAME"]
 PASSWORD = os.environ["USEF_PASSWORD"]
 
 SECTIONS = [
-    "2401 Small Junior Hunter 15/Under",
-    "2402 Large Junior Hunter 15/Under",
-    "2403 Small Junior Hunter 16-17 Years",
-    "2404 Large Junior Hunter 16-17 Years",
+    # "2401 Small Junior Hunter 15/Under",
+    # "2402 Large Junior Hunter 15/Under",
+    # "2403 Small Junior Hunter 16-17 Years",
+    # "2404 Large Junior Hunter 16-17 Years",
     "2421 Small Junior Hunter 3'3\" 15 & Under",
     "2422 Large Junior Hunter 3'3\" 15 & Under",
     "2423 Small Junior Hunter 3'3\" 16-17",
     "2424 Large Junior Hunter 3'3\" 16-17",
-    "2501 Small Pony Hunter",
-    "2502 Medium Pony Hunter",
-    "2503 Large Pony Hunter",
+    # "2501 Small Pony Hunter",
+    # "2502 Medium Pony Hunter",
+    # "2503 Large Pony Hunter",
 ]
 
 EVENTS = [
