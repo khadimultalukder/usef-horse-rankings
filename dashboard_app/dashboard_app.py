@@ -52,9 +52,49 @@ CUSTOM_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap');
 
-    /* ---------- Deep black page background ---------- */
+    /* ---------- Light page background ---------- */
     .stApp {
-        background: #000000;
+        background: #f8fafc;
+    }
+
+    /* ---------- Dropdown / select menu readability ---------- */
+    [data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border-color: rgba(148, 163, 184, 0.45) !important;
+    }
+    [data-baseweb="select"] div,
+    [data-baseweb="select"] span,
+    [data-baseweb="select"] input {
+        color: #0f172a !important;
+    }
+    div[data-baseweb="popover"] ul[data-baseweb="menu"],
+    div[data-baseweb="popover"] div[data-baseweb="menu"] {
+        background-color: #ffffff !important;
+        border: 1px solid rgba(148, 163, 184, 0.35) !important;
+    }
+    li[data-baseweb="menu-item"],
+    li[role="option"] {
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+    }
+    li[data-baseweb="menu-item"]:hover,
+    li[role="option"]:hover {
+        background-color: rgba(99, 102, 241, 0.14) !important;
+        color: #1e1b4b !important;
+    }
+    li[aria-selected="true"] {
+        background-color: #6366f1 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+    /* Multiselect selected-value tags/pills (red background) */
+    [data-baseweb="tag"],
+    [data-baseweb="tag"] span,
+    [data-baseweb="tag"] div {
+        color: #ffffff !important;
+    }
+    [data-baseweb="tag"] svg {
+        fill: #ffffff !important;
     }
 
     /* ---------- Animated KPI cards ---------- */
@@ -80,13 +120,6 @@ CUSTOM_CSS = """
                     border-color 0.28s ease;
         overflow: hidden;
         animation: kpi-fade-in 0.55s ease-out both;
-    }
-    @media (prefers-color-scheme: dark) {
-        .kpi-card {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.10) 0%, rgba(236, 72, 153, 0.08) 100%),
-                        rgba(30, 41, 59, 0.55);
-            border-color: rgba(148, 163, 184, 0.18);
-        }
     }
     .kpi-card::before {
         content: '';
@@ -154,9 +187,6 @@ CUSTOM_CSS = """
         line-height: 1.1;
         color: #0f172a;
     }
-    @media (prefers-color-scheme: dark) {
-        .kpi-value { color: #f8fafc; }
-    }
     .kpi-sub {
         font-size: 0.72rem;
         color: #94a3b8;
@@ -179,14 +209,13 @@ CUSTOM_CSS = """
     .kpi-card:nth-child(4) { animation-delay: 0.24s; }
     .kpi-card:nth-child(5) { animation-delay: 0.32s; }
 
-    /* ---------- Detail card (selected row) ---------- */
+    /* ---------- Detail card (selected row) — simplified ---------- */
     .detail-card {
         padding: 1rem 1.25rem;
         margin: 0.75rem 0 0.25rem 0;
-        border-radius: 14px;
-        border: 1px solid rgba(168, 85, 247, 0.35);
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.10) 0%, rgba(236, 72, 153, 0.10) 100%);
-        animation: kpi-fade-in 0.4s ease-out both;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
     }
     .detail-card .detail-title {
         font-family: 'Space Grotesk', 'Inter', sans-serif;
@@ -199,121 +228,79 @@ CUSTOM_CSS = """
         color: #64748b;
     }
 
-    /* ---------- Row details — grouped field grid ---------- */
+    /* ---------- Row details — simple label: value list ---------- */
     .detail-section {
         font-family: 'Space Grotesk', 'Inter', sans-serif;
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         font-weight: 700;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: #a855f7;
-        margin: 1.1rem 0 0.55rem 0;
+        color: #475569;
+        margin: 1rem 0 0.4rem 0;
+    }
+    .detail-list {
         display: flex;
-        align-items: center;
+        flex-direction: column;
+    }
+    .detail-row {
+        display: flex;
+        align-items: baseline;
         gap: 0.5rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid #f1f5f9;
+        min-width: 0;
     }
-    .detail-section::before {
-        content: '';
-        width: 4px;
-        height: 14px;
-        background: linear-gradient(180deg, #6366f1, #ec4899);
-        border-radius: 2px;
-    }
-    .detail-section .section-line {
-        flex: 1;
-        height: 1px;
-        background: linear-gradient(90deg, rgba(168,85,247,0.25), transparent);
-    }
-    .detail-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: 0.6rem;
-    }
-    .detail-field {
-        padding: 0.7rem 0.85rem;
-        border-radius: 12px;
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(236, 72, 153, 0.04) 100%),
-                    rgba(30, 41, 59, 0.35);
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        transition: border-color 0.2s ease, transform 0.2s ease;
-        animation: kpi-fade-in 0.35s ease-out both;
-    }
-    @media (prefers-color-scheme: light) {
-        .detail-field {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(236, 72, 153, 0.04) 100%),
-                        rgba(255, 255, 255, 0.85);
-        }
-    }
-    .detail-field:hover {
-        border-color: rgba(168, 85, 247, 0.45);
-        transform: translateY(-1px);
-    }
-    .detail-field.detail-field--wide { grid-column: 1 / -1; }
-    .detail-label {
-        font-size: 0.66rem;
+    .detail-row-label {
+        min-width: 140px;
+        font-size: 0.85rem;
         font-weight: 600;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: #94a3b8;
-        margin-bottom: 0.3rem;
+        color: #64748b;
+        flex-shrink: 0;
     }
     .detail-value {
-        font-size: 0.95rem;
+        font-size: 0.92rem;
         font-weight: 500;
-        color: #e2e8f0;
+        color: #0f172a;
         word-break: break-word;
-    }
-    @media (prefers-color-scheme: light) {
-        .detail-value { color: #0f172a; }
     }
     .detail-value.detail-value--big {
         font-family: 'Space Grotesk', 'Inter', sans-serif;
-        font-size: 1.35rem;
+        font-size: 1.15rem;
         font-weight: 700;
-        background: linear-gradient(135deg, #6366f1, #ec4899);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: #4f46e5;
     }
     .detail-value.detail-value--muted { color: #94a3b8; font-style: italic; }
     .detail-chips {
         display: flex;
         flex-wrap: wrap;
         gap: 0.35rem;
-        margin-top: 0.2rem;
     }
     .detail-chip {
         display: inline-flex;
         align-items: center;
         padding: 0.2rem 0.6rem;
-        border-radius: 999px;
-        background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(168,85,247,0.18));
-        border: 1px solid rgba(168,85,247,0.35);
-        color: #e9d5ff;
+        border-radius: 6px;
+        background: #eef2ff;
+        border: 1px solid #e0e7ff;
+        color: #4338ca;
         font-size: 0.78rem;
         font-weight: 600;
         font-family: 'Space Grotesk', monospace;
-    }
-    @media (prefers-color-scheme: light) {
-        .detail-chip { color: #6b21a8; }
     }
     .detail-link-btn {
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
         padding: 0.4rem 0.85rem;
-        border-radius: 10px;
-        background: linear-gradient(135deg, #6366f1, #a855f7);
+        border-radius: 8px;
+        background: #4f46e5;
         color: white !important;
         font-weight: 600;
         font-size: 0.82rem;
         text-decoration: none !important;
-        transition: transform 0.15s ease, box-shadow 0.2s ease;
-        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
     }
     .detail-link-btn:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 14px rgba(99, 102, 241, 0.45);
+        background: #4338ca;
     }
 
     /* ---------- DataFrame row styling ---------- */
@@ -339,15 +326,6 @@ CUSTOM_CSS = """
         font-weight: 600 !important;
         color: #1e293b !important;
         border-bottom: 1px solid rgba(99, 102, 241, 0.25) !important;
-    }
-    @media (prefers-color-scheme: dark) {
-        [data-testid="stDataFrame"] [role="columnheader"] {
-            color: #e2e8f0 !important;
-            background: linear-gradient(180deg, rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.08)) !important;
-        }
-        [data-testid="stDataFrame"] [role="row"]:nth-child(even) > [role="gridcell"] {
-            background: rgba(99, 102, 241, 0.07) !important;
-        }
     }
 </style>
 """
@@ -776,7 +754,6 @@ st.divider()
 # UI: Results table
 # ---------------------------------------------------------------------------
 _top15_label = " — Nat. points = top 15 highest shows" if top15_enabled else " — Nat. points = all shows"
-st.subheader(f"Results ({len(filtered):,}){_top15_label}")
 
 # Sort by show_count descending when Top 15 toggle is ON
 if top15_enabled and "show_count" in filtered.columns:
@@ -805,6 +782,44 @@ display_cols = [c for c in preferred_cols if c in filtered.columns] + \
 display_cols = [c for c in display_cols if c != '_nat_all_shows']
 display_df = filtered[display_cols].copy()
 # _nat_all_shows stays in filtered only (not added to display_df)
+
+# ---------------------------------------------------------------------------
+# Prepare CSV export (display columns, friendly header names)
+# ---------------------------------------------------------------------------
+CSV_HEADERS = {
+    "competition_year":     "Year",
+    "horse_name":           "Horse Name",
+    "horse_id":             "Horse ID",
+    "section":              "Section",
+    "award_category":       "Award Category",
+    "nat_points_good":      "National Points",
+    "nat_points_original":  "National Points (DB)",
+    "show_count":           "Show Count",
+    "shows":                "Shows",
+    "start_date":           "Start Date",
+    "end_date":             "End Date",
+    "horse_link":           "USEF Page URL",
+    "pdf_download_link":    "PDF Report URL",
+    "remark":               "Remark",
+    "scraped_at":           "Scraped At",
+}
+_csv_cols = [c for c in display_cols if c != "_nat_all_shows"]
+_csv_df = filtered[_csv_cols].copy()
+_csv_df.rename(columns={c: CSV_HEADERS.get(c, c) for c in _csv_cols}, inplace=True)
+csv_bytes = _csv_df.to_csv(index=False).encode("utf-8")
+
+# Header row: results title on the left, CSV download button on the right
+_header_col, _btn_col = st.columns([4, 1])
+with _header_col:
+    st.subheader(f"Results ({len(filtered):,}){_top15_label}")
+with _btn_col:
+    st.download_button(
+        label="⬇️ Download CSV",
+        data=csv_bytes,
+        file_name="usef_horse_rankings_filtered.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 # Render with link columns when possible
 column_config = {}
@@ -941,82 +956,51 @@ if selected_rows:
             # Default
             return f'<div class="detail-value">{_html.escape(str(value))}</div>'
 
-        # Render grouped sections
+        # Fields that need the full row width (long text / chips / buttons)
+        WIDE_KEYS = {"shows", "section", "award_category", "horse_link", "pdf_download_link", "remark"}
+
+        # Render grouped sections as a simple "Label: value" list, two columns wide
         section_html_parts = []
         rendered_keys = set()
         for group_label, keys in GROUPS:
             keys_present = [k for k in keys if k in row.index]
             if not keys_present:
                 continue
-            cards = []
+            rows_html = []
             for k in keys_present:
                 rendered_keys.add(k)
-                wide_cls = " detail-field--wide" if k in ("shows", "section", "award_category") else ""
-                cards.append(
-                    f'<div class="detail-field{wide_cls}">'
-                    f'<div class="detail-label">{_html.escape(LABELS.get(k, k))}</div>'
+                wide_cls = " detail-row--wide" if k in WIDE_KEYS else ""
+                rows_html.append(
+                    f'<div class="detail-row{wide_cls}">'
+                    f'<span class="detail-row-label">{_html.escape(LABELS.get(k, k))}:</span>'
                     f'{_fmt_value(k, row.get(k))}'
                     f'</div>'
                 )
             section_html_parts.append(
-                f'<div class="detail-section">{group_label}<span class="section-line"></span></div>'
-                f'<div class="detail-grid">{"".join(cards)}</div>'
+                f'<div class="detail-section">{group_label}</div>'
+                f'<div class="detail-list">{"".join(rows_html)}</div>'
             )
 
         # Catch-all section for any unexpected columns
         leftover = [k for k in row.index if k not in rendered_keys]
         if leftover:
-            cards = []
+            rows_html = []
             for k in leftover:
-                cards.append(
-                    f'<div class="detail-field">'
-                    f'<div class="detail-label">{_html.escape(LABELS.get(k, str(k)))}</div>'
+                wide_cls = " detail-row--wide" if k in WIDE_KEYS else ""
+                rows_html.append(
+                    f'<div class="detail-row{wide_cls}">'
+                    f'<span class="detail-row-label">{_html.escape(LABELS.get(k, str(k)))}:</span>'
                     f'{_fmt_value(k, row.get(k))}'
                     f'</div>'
                 )
             section_html_parts.append(
-                f'<div class="detail-section">📦 Other<span class="section-line"></span></div>'
-                f'<div class="detail-grid">{"".join(cards)}</div>'
+                f'<div class="detail-section">📦 Other</div>'
+                f'<div class="detail-list">{"".join(rows_html)}</div>'
             )
 
         st.markdown("".join(section_html_parts), unsafe_allow_html=True)
 else:
     st.caption("👆 Click any row to highlight it and see its details.")
-
-# ---------------------------------------------------------------------------
-# UI: CSV download  (display columns only, with friendly header names)
-# ---------------------------------------------------------------------------
-CSV_HEADERS = {
-    "competition_year":     "Year",
-    "horse_name":           "Horse Name",
-    "horse_id":             "Horse ID",
-    "section":              "Section",
-    "award_category":       "Award Category",
-    "nat_points_good":      "National Points",
-    "nat_points_original":  "National Points (DB)",
-    "show_count":           "Show Count",
-    "shows":                "Shows",
-    "start_date":           "Start Date",
-    "end_date":             "End Date",
-    "horse_link":           "USEF Page URL",
-    "pdf_download_link":    "PDF Report URL",
-    "remark":               "Remark",
-    "scraped_at":           "Scraped At",
-}
-
-# Use display_cols, strip internal helpers
-_csv_cols = [c for c in display_cols if c != "_nat_all_shows"]
-_csv_df = filtered[_csv_cols].copy()
-_csv_df.rename(columns={c: CSV_HEADERS.get(c, c) for c in _csv_cols}, inplace=True)
-
-csv_bytes = _csv_df.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label="⬇️  Download filtered results as CSV",
-    data=csv_bytes,
-    file_name="usef_horse_rankings_filtered.csv",
-    mime="text/csv",
-    use_container_width=False,
-)
 
 st.caption(
     "Tip: click any column header in the table above to sort. "
