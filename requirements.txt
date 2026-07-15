@@ -1,0 +1,22 @@
+# Scraper (usef_scraper_seleninum/)
+selenium
+pdfplumber
+
+# Scraper — VPS only (main_app_vps.py, needs Xvfb installed on the OS too)
+pyvirtualdisplay
+
+# Scraper — proxy-for-login-only variant (main_app_proxy.py)
+selenium-wire
+blinker<1.6   # selenium-wire's vendored mitmproxy code imports blinker._saferef,
+              # removed in blinker 1.6+ -> pin old blinker or seleniumwire import crashes
+setuptools    # selenium-wire's vendored mitmproxy code needs pkg_resources,
+              # which isn't bundled by default anymore -> install setuptools explicitly
+
+# Dashboard (dashboard_app/)
+streamlit>=1.35
+pandas>=2.0
+httpx>=0.27
+
+# Shared
+python-dotenv>=1.0
+supabase>=2.5
