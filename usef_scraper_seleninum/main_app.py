@@ -7,6 +7,8 @@ Usage:
   python main_app.py --section "2423 Small Junior Hunter 3'3\" 16-17"  # run one section across all events
   python main_app.py --section "2423"                                  # same as above — code auto-resolves to full name
   python main_app.py --section "2401,2402,2403,2404"                   # run multiple sections (comma-separated)
+  python main_app.py --section "2421,2422,2423,2424"                   # run multiple sections (comma-separated)
+  python main_app.py --section "2501,2502,2503"                   # run multiple sections (comma-separated)
   python3 main_app.py --section "2424" --event "event_1"               # combine section + event
 """
 from selenium import webdriver
