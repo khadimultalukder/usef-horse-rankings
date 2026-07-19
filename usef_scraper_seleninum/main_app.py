@@ -165,6 +165,38 @@ def upload_to_supabase():
     print(f"\n🎉 Supabase upload complete — {inserted}/{total} rows upserted to '{TABLE_NAME}'")
 
 
+def upload_batch_to_supabase(rows: list) -> int:
+    """
+    Upsert just this batch of records (e.g. everything collected for one
+    section) to Supabase. Same conflict handling as upload_to_supabase(),
+    just scoped to a subset of Extracted_Data. Returns rows upserted.
+    """
+    if not rows:
+        print("⚠️  No data to export for this section")
+        return 0
+
+    transformed = [_transform_record(r) for r in rows]
+    before      = len(transformed)
+    transformed = _dedupe(transformed)
+    dupes       = before - len(transformed)
+    if dupes:
+        print(f"ℹ️  Removed {dupes} in-batch duplicate(s) before upload")
+
+    total    = len(transformed)
+    inserted = 0
+
+    for i in range(0, total, BATCH_SIZE):
+        batch = transformed[i : i + BATCH_SIZE]
+        try:
+            supabase.table(TABLE_NAME).upsert(batch, on_conflict=CONFLICT_COLS).execute()
+            inserted += len(batch)
+            print(f"✅ Supabase batch {i // BATCH_SIZE + 1}: {inserted}/{total} rows upserted")
+        except Exception as e:
+            print(f"❌ Supabase batch {i // BATCH_SIZE + 1} failed: {e}")
+
+    return inserted
+
+
 # ──────────────────────────────────────────────
 # Driver
 # ──────────────────────────────────────────────
@@ -642,6 +674,7 @@ def main():
     smart_login(driver)   # ← cookie-aware login (replaces plain login())
 
     stop = False
+    section_export_summary = {}   # {section_id: total records exported}
 
     for event in events_to_run:
         if stop:
@@ -660,6 +693,8 @@ def main():
             print(f"{'='*60}")
 
             open_rankings(driver, comp_year, section_id)
+
+            records_before_section = len(Extracted_Data)   # ← for per-section export
 
             page = 1
             while True:
@@ -715,6 +750,12 @@ def main():
                 page += 1
                 time.sleep(2)
 
+            # ── Export this section's data now (before moving to next section) ──
+            section_batch = Extracted_Data[records_before_section:]
+            print(f"\n📤 Exporting section {section_id} — {len(section_batch)} record(s)...")
+            exported = upload_batch_to_supabase(section_batch)
+            section_export_summary[section_id] = section_export_summary.get(section_id, 0) + exported
+
     try:
         driver.quit()
     except Exception:
@@ -722,9 +763,12 @@ def main():
 
     print(f"\n🎉 Scraping done!")
 
-    # ── Upload all collected data to Supabase ──────────────────────────────
-    print(f"\n📤 Uploading {len(Extracted_Data)} records to Supabase...")
-    upload_to_supabase()
+    # ── Per-section export summary ──────────────────────────────────────────
+    print(f"\n📊 Export Summary:")
+    for section_id in sections_to_run:
+        code  = section_id.split(" ", 1)[0]
+        count = section_export_summary.get(section_id, 0)
+        print(f"   {code} = {count} data exported")
 
     # ── Delete horse_reports folder ────────────────────────────────────────
     try:
